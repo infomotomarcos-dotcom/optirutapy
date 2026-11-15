@@ -192,7 +192,7 @@ def _normalizar_busqueda(value):
 
 def buscar_cliente(prefix):
     """Busca en CLIENTES y copia los datos exactos del registro seleccionado."""
-    st.markdown("### 👤 Buscar cliente existente")
+    ("### 👤 Buscar cliente existente")
     clientes = rows("CLIENTES")
     query = st.text_input(
         "Buscar por nombre o teléfono",
@@ -1039,7 +1039,14 @@ elif role == "EMPRENDEDOR":
             unsafe_allow_html=True
         )
 
-        st.markdown("### 1. Datos del proveedor")
+        errores_recibir = st.session_state.get("errores_recibir", [])
+
+        def etiqueta_recibir(texto, campo):
+            if campo in errores_recibir:
+                return "🔴 " + texto
+            return texto
+
+        st.markdown("### 1. Datos del proveedor"))
         with st.form("entrepreneur_levante_form", enter_to_submit=False):
             supplier = st.text_input(
                 "Nombre del proveedor *",
