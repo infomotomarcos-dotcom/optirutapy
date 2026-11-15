@@ -1018,7 +1018,7 @@ elif role == "EMPRENDEDOR":
 
     if st.session_state.entrepreneur_view == "LEVANTAR":
         brand_header(show_tag=False)
-        st.title("Solicitar un RECIBIR")
+        st.title("Solicitar un SOBRE o una COMPRA")
         st.caption("Completá los datos del proveedor y el lugar donde querés recibir tu compra.")
 
         st.markdown(
@@ -1032,8 +1032,7 @@ elif role == "EMPRENDEDOR":
                 font-weight: 600;
                 margin-bottom: 15px;
             ">
-                Tarifa del servicio RECIBIR: Gs. 20.000.
-                El monto de la compra se registra por separado.
+                El servicio puede incluir varios trámites, como prioridad del levante, espera en filas, gestión de pagos, verificación de compra y certeza de compra. Su costo base es de Gs. 20.000.
             </div>
             """,
             unsafe_allow_html=True
