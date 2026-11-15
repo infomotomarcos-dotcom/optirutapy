@@ -1059,12 +1059,12 @@ elif role == "EMPRENDEDOR":
             )
 
             origin_address = st.text_input(
-                "Dirección del retiro *",
+                etiqueta_recibir("Dirección del retiro *", "origin_address"),
                 placeholder="Dirección donde OptiRuta debe retirar la compra"
             )
 
             origin_maps = st.text_input(
-                "Ubicación de Google Maps del proveedor *",
+                etiqueta_recibir("Ubicación de Google Maps del proveedor *", "origin_maps"),
                 placeholder="Pegá el enlace de ubicación compartida"
             )
 
@@ -1077,12 +1077,12 @@ elif role == "EMPRENDEDOR":
             st.markdown("### 2. Lugar donde querés recibir la compra")
 
             destination_address = st.text_input(
-                "Dirección de destino *",
+                etiqueta_recibir("Dirección de destino *", "destination_address"),
                 placeholder="Dirección donde querés recibir tu mercadería"
             )
 
             destination_maps = st.text_input(
-                "Ubicación de Google Maps del destino *",
+                etiqueta_recibir("Ubicación de Google Maps del destino *", "destination_maps"),
                 placeholder="Pegá el enlace de ubicación compartida"
             )
 
@@ -1100,7 +1100,7 @@ elif role == "EMPRENDEDOR":
             )
 
             requested_name = st.text_input(
-                "Nombre a nombre de quién se solicita *",
+                etiqueta_recibir("Nombre a nombre de quién se solicita *", "requested_name"),
                 placeholder="Nombre que el proveedor debe reconocer"
             )
 
@@ -1120,33 +1120,60 @@ elif role == "EMPRENDEDOR":
                 use_container_width=True
             )
 
+
+        def error_recibir(mensaje):
+            st.markdown(
+                f"""
+                <div style="
+                    background-color: #FDE8E8;
+                    color: #991B1B;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    border: 1px solid #F5B5B5;
+                    font-weight: 600;
+                    margin: 8px 0;
+                ">
+                    {mensaje}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        mensajes_recibir = {
+            "supplier": "Ingresá el nombre del proveedor.",
+            "origin_address": "Completá la dirección de retiro.",
+            "origin_maps": "Completá la ubicación de Google Maps del proveedor.",
+            "destination_address": "Completá la dirección de destino.",
+            "destination_maps": "Completá la ubicación de Google Maps del destino.",
+            "requested_name": "Ingresá el nombre solicitado."
+        }
+
         if submitted_levante:
-            def error_recibir(mensaje):
-                st.markdown(
-                    f"""
-                    <div style="
-                        background-color: #FDE8E8;
-                        color: #991B1B;
-                        padding: 12px 16px;
-                        border-radius: 8px;
-                        border: 1px solid #F5B5B5;
-                        font-weight: 600;
-                        margin: 8px 0;
-                    ">
-                        {mensaje}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+            errores = []
 
             if not supplier.strip():
-                error_recibir("Ingresá el nombre del proveedor.")
-            elif not origin_address.strip() or not origin_maps.strip():
-                error_recibir("Completá la dirección y ubicación de retiro.")
-            elif not destination_address.strip() or not destination_maps.strip():
-                error_recibir("Completá la dirección y ubicación de destino.")
-            elif not requested_name.strip():
-                error_recibir("Ingresá el nombre solicitado.")
+                errores.append("supplier")
+
+            if not origin_address.strip():
+                errores.append("origin_address")
+
+            if not origin_maps.strip():
+                errores.append("origin_maps")
+
+            if not destination_address.strip():
+                errores.append("destination_address")
+
+            if not destination_maps.strip():
+                errores.append("destination_maps")
+
+            if not requested_name.strip():
+                errores.append("requested_name")
+
+            st.session_state["errores_recibir"] = errores
+
+            if errores:
+                st.rerun()
+
             else:
                 record = {
                     "ID_Levante": "",
@@ -1171,6 +1198,9 @@ elif role == "EMPRENDEDOR":
                 }
 
                 save("LEVANTES", record)
+
+        for campo in st.session_state.get("errores_recibir", []):
+            error_recibir(mensajes_recibir[campo])
 
         st.divider()
         st.subheader("Mis solicitudes de RECIBIR")
