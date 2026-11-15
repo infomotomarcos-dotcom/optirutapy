@@ -1114,14 +1114,32 @@ elif role == "EMPRENDEDOR":
             )
 
         if submitted_levante:
+            def error_recibir(mensaje):
+                st.markdown(
+                    f"""
+                    <div style="
+                        background-color: #FDE8E8;
+                        color: #991B1B;
+                        padding: 12px 16px;
+                        border-radius: 8px;
+                        border: 1px solid #F5B5B5;
+                        font-weight: 600;
+                        margin: 8px 0;
+                    ">
+                        {mensaje}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
             if not supplier.strip():
-                st.error("Ingresá el nombre del proveedor.")
+                error_recibir("Ingresá el nombre del proveedor.")
             elif not origin_address.strip() or not origin_maps.strip():
-                st.error("Completá la dirección y ubicación de retiro.")
+                error_recibir("Completá la dirección y ubicación de retiro.")
             elif not destination_address.strip() or not destination_maps.strip():
-                st.error("Completá la dirección y ubicación de destino.")
+                error_recibir("Completá la dirección y ubicación de destino.")
             elif not requested_name.strip():
-                st.error("Ingresá el nombre solicitado.")
+                error_recibir("Ingresá el nombre solicitado.")
             else:
                 record = {
                     "ID_Levante": "",
