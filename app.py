@@ -1109,7 +1109,7 @@ elif role == "EMPRENDEDOR":
             )
 
             submitted_levante = st.form_submit_button(
-                "SOLICITAR RECIBIR",
+                "ENVIAR SOLICITUD",
                 use_container_width=True
             )
 
