@@ -1174,8 +1174,44 @@ elif role == "EMPRENDEDOR":
                     if col in levantes.columns
                 ]
 
+            if not levantes.empty:
+                visible_columns = [
+                    "ID_Levante",
+                    "Fecha_Solicitud",
+                    "Nombre_Proveedor",
+                    "Direccion_Origen",
+                    "Direccion_Destino",
+                    "Monto_Total",
+                    "Estado_Levante"
+                ]
+
+                visible_columns = [
+                    col for col in visible_columns
+                    if col in levantes.columns
+                ]
+
+                tabla_levantes = (
+                    levantes[visible_columns]
+                    .style
+                    .set_properties(**{
+                        "background-color": "#FFFFFF",
+                        "color": "#17365D",
+                        "border-color": "#B8D0F0"
+                    })
+                    .set_table_styles([
+                        {
+                            "selector": "th",
+                            "props": [
+                                ("background-color", "#0750B8"),
+                                ("color", "#FFFFFF"),
+                                ("font-weight", "bold")
+                            ]
+                        }
+                    ])
+                )
+
                 st.dataframe(
-                    levantes[visible_columns],
+                    tabla_levantes,
                     use_container_width=True,
                     hide_index=True
                 )
@@ -1183,7 +1219,6 @@ elif role == "EMPRENDEDOR":
                 st.info("Todavía no tenés solicitudes de RECIBIR.")
         else:
             st.info("Todavía no tenés solicitudes de RECIBIR.")
-
         st.divider()
 
         if st.button("← VOLVER", use_container_width=True):
