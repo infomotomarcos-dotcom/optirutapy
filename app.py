@@ -1216,10 +1216,39 @@ elif role == "EMPRENDEDOR":
                     hide_index=True,
                     theme="light"
                 )
+            
             else:
-                st.info("Todavía no tenés solicitudes de RECIBIR.")
+                st.markdown(
+                    """
+                    <div style="
+                        background-color: #EAF2FF;
+                        color: #17365D;
+                        padding: 14px 18px;
+                        border-radius: 10px;
+                        border: 1px solid #B8D0F0;
+                        font-weight: 600;
+                    ">
+                        Todavía no tenés solicitudes de RECIBIR.
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
         else:
-            st.info("Todavía no tenés solicitudes de RECIBIR.")
+            st.markdown(
+                """
+                <div style="
+                    background-color: #EAF2FF;
+                    color: #17365D;
+                    padding: 14px 18px;
+                    border-radius: 10px;
+                    border: 1px solid #B8D0F0;
+                    font-weight: 600;
+                ">
+                    Todavía no tenés solicitudes de RECIBIR.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
         st.divider()
 
         if st.button("← VOLVER", use_container_width=True):
