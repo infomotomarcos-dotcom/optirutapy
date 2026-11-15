@@ -182,6 +182,23 @@ def df(sheet):
     return pd.DataFrame(rows(sheet))
 
 
+def es_enlace_google_maps(url):
+    url = str(url).strip().lower()
+
+    if not url.startswith(("https://", "http://")):
+        return False
+
+    dominios_validos = (
+        "maps.app.goo.gl/",
+        "www.google.com/maps",
+        "google.com/maps",
+        "maps.google.com/"
+    )
+
+    return any(dominio in url for dominio in dominios_validos)
+
+
+
 def _normalizar_busqueda(value):
     """Normaliza texto para buscar sin distinguir mayúsculas ni tildes."""
     import unicodedata
@@ -1159,11 +1176,15 @@ elif role == "EMPRENDEDOR":
 
             if not origin_maps.strip():
                 errores.append("origin_maps")
+            elif not es_enlace_google_maps(origin_maps):
+                errores.append("origin_maps")
 
             if not destination_address.strip():
                 errores.append("destination_address")
 
             if not destination_maps.strip():
+                errores.append("destination_maps")
+            elif not es_enlace_google_maps(destination_maps):
                 errores.append("destination_maps")
 
             if not requested_name.strip():
