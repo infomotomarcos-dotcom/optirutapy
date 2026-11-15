@@ -417,6 +417,22 @@ if not st.session_state.user:
         st.subheader(portal_names[st.session_state.portal])
         st.markdown("### 🔐 Ingresá tus datos de acceso")
         with st.form("login_form", enter_to_submit=True):
+            st.markdown("""
+                <style>
+                div[data-testid="stForm"] input {
+                    background-color: #FFFFFF !important;
+                    color: #17365D !important;
+                    -webkit-text-fill-color: #17365D !important;
+                    border: 1px solid #B8D0F0 !important;
+                }
+
+                div[data-testid="stForm"] input::placeholder {
+                    color: #64748B !important;
+                    -webkit-text-fill-color: #64748B !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
             username = st.text_input("Usuario")
             password = st.text_input("Contraseña", type="password")
             submitted = st.form_submit_button("INGRESAR", use_container_width=True)
