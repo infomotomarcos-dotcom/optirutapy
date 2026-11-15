@@ -1159,9 +1159,9 @@ elif role == "EMPRENDEDOR":
         mensajes_recibir = {
             "supplier": "Ingresá el nombre del proveedor.",
             "origin_address": "Completá la dirección de retiro.",
-            "origin_maps": "Completá la ubicación de Google Maps del proveedor.",
+            "origin_maps": "La ubicación del proveedor está vacía o no es un enlace válido de Google Maps.",
             "destination_address": "Completá la dirección de destino.",
-            "destination_maps": "Completá la ubicación de Google Maps del destino.",
+            "destination_maps": "La ubicación del destino está vacía o no es un enlace válido de Google Maps.",
             "requested_name": "Ingresá el nombre solicitado."
         }
 
