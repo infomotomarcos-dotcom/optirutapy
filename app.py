@@ -1032,7 +1032,8 @@ elif role == "EMPRENDEDOR":
                 font-weight: 600;
                 margin-bottom: 15px;
             ">
-                El servicio puede incluir varios trámites, como prioridad del levante, espera en filas, gestión de pagos, verificación de compra y certeza de compra. Su costo base es de Gs. 20.000.
+                El servicio puede incluir varios trámites, como prioridad del levante, espera en filas, gestión de pagos, verificación de compra y certeza de compra. 
+                Su costo base es de Gs. 20.000.
             </div>
             """,
             unsafe_allow_html=True
