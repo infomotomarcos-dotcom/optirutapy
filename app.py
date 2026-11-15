@@ -1213,7 +1213,7 @@ elif role == "EMPRENDEDOR":
                 st.dataframe(
                     tabla_levantes,
                     use_container_width=True,
-                    hide_index=True
+                    hide_index=True,
                     theme="light"
                 )
             else:
