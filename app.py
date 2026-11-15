@@ -1046,7 +1046,7 @@ elif role == "EMPRENDEDOR":
                 return "🔴 " + texto
             return texto
 
-        st.markdown("### 1. Datos del proveedor"))
+        st.markdown("### 1. Datos del proveedor")
         with st.form("entrepreneur_levante_form", enter_to_submit=False):
             supplier = st.text_input(
                 "Nombre del proveedor *",
