@@ -1005,13 +1005,25 @@ elif role == "EMPRENDEDOR":
         st.title("Solicitar un RECIBIR")
         st.caption("Completá los datos del proveedor y el lugar donde querés recibir tu compra.")
 
-        st.info(
-            "Tarifa del servicio RECIBIR: Gs. 20.000. "
-            "El monto de la compra se registra por separado."
+        st.markdown(
+            """
+            <div style="
+                background-color: #EAF2FF;
+                color: #17365D;
+                padding: 14px 18px;
+                border-radius: 10px;
+                border: 1px solid #B8D0F0;
+                font-weight: 600;
+                margin-bottom: 15px;
+            ">
+                Tarifa del servicio RECIBIR: Gs. 20.000.
+                El monto de la compra se registra por separado.
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
         st.markdown("### 1. Datos del proveedor")
-
         with st.form("entrepreneur_levante_form", enter_to_submit=False):
             supplier = st.text_input(
                 "Nombre del proveedor *",
