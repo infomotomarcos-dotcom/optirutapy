@@ -994,7 +994,7 @@ elif role == "EMPRENDEDOR":
                 st.rerun()
 
         with col_levantar:
-            if st.button("🛍️ LEVANTAR", key="btn_levantar", use_container_width=True):
+            if st.button("🛍️ RECIBIR", key="btn_levantar", use_container_width=True):
                 st.session_state.entrepreneur_view = "LEVANTAR"
                 st.rerun()
 
@@ -1002,8 +1002,161 @@ elif role == "EMPRENDEDOR":
 
     if st.session_state.entrepreneur_view == "LEVANTAR":
         brand_header(show_tag=False)
-        st.title("Levantar")
-        st.info("Módulo de Levantes en preparación.")
+        st.title("Solicitar un RECIBIR")
+        st.caption("Completá los datos del proveedor y el lugar donde querés recibir tu compra.")
+
+        st.info(
+            "Tarifa del servicio RECIBIR: Gs. 20.000. "
+            "El monto de la compra se registra por separado."
+        )
+
+        st.markdown("### 1. Datos del proveedor")
+
+        with st.form("entrepreneur_levante_form", enter_to_submit=False):
+            supplier = st.text_input(
+                "Nombre del proveedor *",
+                placeholder="Nombre del local o proveedor"
+            )
+
+            supplier_phone = st.text_input(
+                "Teléfono del proveedor",
+                placeholder="Número de contacto"
+            )
+
+            origin_address = st.text_input(
+                "Dirección del retiro *",
+                placeholder="Dirección donde OptiRuta debe retirar la compra"
+            )
+
+            origin_maps = st.text_input(
+                "Ubicación de Google Maps del proveedor *",
+                placeholder="Pegá el enlace de ubicación compartida"
+            )
+
+            origin_reference = st.text_input(
+                "Referencia del lugar de retiro",
+                placeholder="Ej.: local frente a la plaza"
+            )
+
+            st.divider()
+            st.markdown("### 2. Lugar donde querés recibir la compra")
+
+            destination_address = st.text_input(
+                "Dirección de destino *",
+                placeholder="Dirección donde querés recibir tu mercadería"
+            )
+
+            destination_maps = st.text_input(
+                "Ubicación de Google Maps del destino *",
+                placeholder="Pegá el enlace de ubicación compartida"
+            )
+
+            destination_reference = st.text_input(
+                "Referencia del destino",
+                placeholder="Ej.: portón negro, casa de esquina"
+            )
+
+            st.divider()
+            st.markdown("### 3. Datos para identificar la compra")
+
+            reference_number = st.text_input(
+                "Número de referencia",
+                placeholder="Número de pedido o comprobante del proveedor"
+            )
+
+            requested_name = st.text_input(
+                "Nombre a nombre de quién se solicita *",
+                placeholder="Nombre que el proveedor debe reconocer"
+            )
+
+            merchandise_description = st.text_area(
+                "Descripción de la mercadería",
+                placeholder="Descripción breve de lo que se debe retirar",
+                height=80
+            )
+
+            priority = st.selectbox(
+                "Prioridad",
+                ["Normal", "Urgente"]
+            )
+
+            submitted_levante = st.form_submit_button(
+                "SOLICITAR RECIBIR",
+                use_container_width=True
+            )
+
+        if submitted_levante:
+            if not supplier.strip():
+                st.error("Ingresá el nombre del proveedor.")
+            elif not origin_address.strip() or not origin_maps.strip():
+                st.error("Completá la dirección y ubicación de retiro.")
+            elif not destination_address.strip() or not destination_maps.strip():
+                st.error("Completá la dirección y ubicación de destino.")
+            elif not requested_name.strip():
+                st.error("Ingresá el nombre solicitado.")
+            else:
+                record = {
+                    "ID_Levante": "",
+                    "ID_Emprendedor": uid,
+                    "Nombre_Proveedor": supplier.strip(),
+                    "Telefono_Proveedor": supplier_phone.strip(),
+                    "Direccion_Origen": origin_address.strip(),
+                    "Ubicacion_Origen_Google_Maps": origin_maps.strip(),
+                    "Latitud_Origen": "",
+                    "Longitud_Origen": "",
+                    "Referencia_Origen": origin_reference.strip(),
+                    "Direccion_Destino": destination_address.strip(),
+                    "Ubicacion_Destino_Google_Maps": destination_maps.strip(),
+                    "Latitud_Destino": "",
+                    "Longitud_Destino": "",
+                    "Referencia_Destino": destination_reference.strip(),
+                    "Numero_Referencia": reference_number.strip(),
+                    "Nombre_Solicitado": requested_name.strip(),
+                    "Descripcion_Mercaderia": merchandise_description.strip(),
+                    "Prioridad": priority,
+                    "Observaciones": ""
+                }
+
+                save("LEVANTES", record)
+
+        st.divider()
+        st.subheader("Mis solicitudes de RECIBIR")
+
+        levantes = df("LEVANTES")
+
+        if not levantes.empty:
+            if "ID_Emprendedor" in levantes.columns:
+                levantes = levantes[
+                    levantes["ID_Emprendedor"].astype(str) == str(uid)
+                ].copy()
+
+            if not levantes.empty:
+                visible_columns = [
+                    "ID_Levante",
+                    "Fecha_Solicitud",
+                    "Nombre_Proveedor",
+                    "Direccion_Origen",
+                    "Direccion_Destino",
+                    "Monto_Total",
+                    "Estado_Levante"
+                ]
+
+                visible_columns = [
+                    col for col in visible_columns
+                    if col in levantes.columns
+                ]
+
+                st.dataframe(
+                    levantes[visible_columns],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("Todavía no tenés solicitudes de RECIBIR.")
+        else:
+            st.info("Todavía no tenés solicitudes de RECIBIR.")
+
+        st.divider()
 
         if st.button("← VOLVER", use_container_width=True):
             st.session_state.entrepreneur_view = None
