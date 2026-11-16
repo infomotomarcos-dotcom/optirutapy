@@ -415,12 +415,12 @@ if not st.session_state.user:
                 st.session_state.portal = "CONDUCTOR"
                 st.rerun()
         with p3:
-            if st.button("⚙️  ADMINISTRADOR", use_container_width=True):
-                st.session_state.portal = "ADMIN"
-                st.rerun()
-        with p4:
             if st.button("🧭  OPERADORES", use_container_width=True):
                 st.session_state.portal = "OPERADOR"
+                st.rerun()
+        with p4:
+            if st.button("⚙️  ADMINISTRADOR", use_container_width=True):
+                st.session_state.portal = "ADMIN"
                 st.rerun()
 
     if st.session_state.portal:
