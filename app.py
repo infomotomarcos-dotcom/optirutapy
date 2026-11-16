@@ -1794,10 +1794,11 @@ elif role == "OPERADOR":
     if result:
         active = result.get("active", [])
         queue = result.get("queue", [])
-        c1,c2,c3 = st.columns(3)
+        c1,c2,c3,c4 = st.columns(4)
         c1.metric("Trabajos en gestión", f"{len(active)}/3")
         c2.metric("Pedidos disponibles", sum(1 for x in queue if x.get("Tipo_Trabajo")=="PEDIDO"))
-        c3.metric("Comisiones acumuladas", money(int(result.get("commissions", 0) or 0)))
+        c3.metric("Levantes disponibles", sum(1 for x in queue if x.get("Tipo_Trabajo")=="LEVANTE"))
+        c4.metric("Comisiones acumuladas", money(int(result.get("commissions", 0) or 0)))
         st.subheader("Mis trabajos activos")
         if active:
             for work in active:
@@ -1816,18 +1817,82 @@ elif role == "OPERADOR":
                             if done: st.success(done.get("message","Coordinación registrada")); st.rerun()
         else:
             st.info("Todavía no tenés trabajos activos.")
-        st.subheader("Pedidos disponibles")
+
+        st.subheader("Pedidos y levantes disponibles")
+
         if queue:
             for item in queue:
+                tipo = item.get("Tipo_Trabajo")
+                referencia = item.get("ID_Referencia_Trabajo")
+
                 with st.container(border=True):
-                    st.markdown(f"**{item.get('ID_Referencia_Trabajo')} · {item.get('Cliente') or 'Cliente sin nombre'}**")
-                    st.markdown(f"{item.get('Direccion') or 'Sin dirección'}")
-                    st.caption(f"{item.get('Prioridad')} · {item.get('Descripcion') or 'Sin descripción'} · Cargado: {item.get('Fecha_Carga') or 's/d'}")
-                    if st.button("TOMAR PEDIDO", key=f"op_take_{item.get('ID_Referencia_Trabajo')}", disabled=len(active)>=3, use_container_width=True):
-                        taken=api("operator_take", work_type="PEDIDO", reference_id=item.get("ID_Referencia_Trabajo"))
-                        if taken: st.success(taken.get("message","Pedido tomado")); st.rerun()
+
+                    if tipo == "PEDIDO":
+                        st.markdown(
+                            f"**📦 PEDIDO · {referencia}**"
+                        )
+                        st.markdown(
+                            f"**Cliente:** {item.get('Cliente') or 'Cliente sin nombre'}"
+                        )
+                        st.markdown(
+                            f"**Dirección:** {item.get('Direccion') or 'Sin dirección'}"
+                        )
+                        st.caption(
+                            f"{item.get('Prioridad')} · "
+                            f"{item.get('Descripcion') or 'Sin descripción'} · "
+                            f"Cargado: {item.get('Fecha_Carga') or 's/d'}"
+                        )
+                        texto_boton = "TOMAR PEDIDO"
+
+                    elif tipo == "LEVANTE":
+                        st.markdown(
+                            f"**🛍️ LEVANTE · {referencia}**"
+                        )
+                        st.markdown(
+                            f"**Proveedor:** {item.get('Proveedor') or 'Sin proveedor'}"
+                        )
+                        st.markdown(
+                            f"**Teléfono:** {item.get('Telefono') or 'Sin teléfono'}"
+                        )
+                        st.markdown(
+                            f"**📍 Retiro:** {item.get('Direccion_Origen') or 'Sin dirección'}"
+                        )
+                        st.markdown(
+                            f"**🏠 Destino:** {item.get('Direccion_Destino') or 'Sin dirección'}"
+                        )
+                        st.markdown(
+                            f"**A nombre de:** {item.get('Nombre_Solicitado') or 'Sin nombre'}"
+                        )
+                        st.caption(
+                            f"{item.get('Prioridad')} · "
+                            f"{item.get('Descripcion') or 'Sin descripción'} · "
+                            f"Solicitado: {item.get('Fecha_Carga') or 's/d'}"
+                        )
+                        texto_boton = "TOMAR LEVANTE"
+
+                    else:
+                        continue
+
+                    if st.button(
+                        texto_boton,
+                        key=f"op_take_{tipo}_{referencia}",
+                        disabled=len(active) >= 3,
+                        use_container_width=True
+                    ):
+                        taken = api(
+                            "operator_take",
+                            work_type=tipo,
+                            reference_id=referencia
+                        )
+
+                        if taken:
+                            st.success(
+                                taken.get("message", "Trabajo tomado")
+                            )
+                            st.rerun()
+
         else:
-            st.info("No hay pedidos disponibles en este momento.")
+            st.info("No hay pedidos ni levantes disponibles en este momento.")
     if st.button("Actualizar lista", use_container_width=True): st.rerun()
 
 else:
