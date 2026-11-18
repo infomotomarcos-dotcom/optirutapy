@@ -741,7 +741,7 @@ if role == "ADMIN":
             ownership = st.selectbox("Propiedad", ["OPTIRUTA", "CONDUCTOR"])
             owner = st.text_input("Propietario (si es del conductor)")
             if st.form_submit_button("AGREGAR MOTO"):
-                save("MOTOS", {"ID_Moto": "", "Descripcion": desc, "Patente": plate, "Propiedad": ownership, "Propietario": owner, "Conductor_Asignado": "", "Estado": "Activa", "Observaciones": ""})
+                save("MOTOS", {"ID_Moto": "", "Descripcion": desc, "Patente": plate, "Propiedad": ownership, "Propietario": owner, "Conductor_Asignado": "", "Estado": "Activo", "Observaciones": ""})
         st.dataframe(df("MOTOS"), use_container_width=True, hide_index=True)
 
     elif section == "Caja y movimientos":
