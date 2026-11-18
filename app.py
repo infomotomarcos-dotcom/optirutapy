@@ -682,12 +682,55 @@ if role == "ADMIN":
     elif section == "Conductores":
         st.subheader("Conductores")
         st.markdown("### 👤 Datos del conductor")
+
         with st.form("driver"):
             name = st.text_input("Nombre completo")
+            ci = st.text_input("Cédula de identidad (CI)", key="driver_ci")
             phone = st.text_input("Teléfono", key="driver_phone")
+
             if st.form_submit_button("AGREGAR CONDUCTOR"):
-                save("CONDUCTORES", {"ID_Conductor": "", "Nombre_Completo": name, "Telefono": phone, "Estado": "Activo", "Fecha_Ingreso": datetime.now().date().isoformat(), "Fecha_Baja": "", "Observaciones": ""})
-        st.dataframe(df("CONDUCTORES"), use_container_width=True, hide_index=True)
+                if not name.strip():
+                    st.error("Ingresá el nombre completo.")
+                elif not ci.strip():
+                    st.error("La cédula de identidad (CI) es obligatoria.")
+                else:
+                    save("CONDUCTORES", {
+                        "ID_Conductor": "",
+                        "CI": ci.strip(),
+                        "Nombre_Completo": name.strip(),
+                        "Telefono": phone.strip(),
+                        "Estado": "Activo",
+                        "Fecha_Ingreso": datetime.now().date().isoformat(),
+                        "Fecha_Baja": "",
+                        "Observaciones": ""
+                    })
+
+        conductores = df("CONDUCTORES")
+
+        if not conductores.empty:
+            columnas = [
+                "ID_Conductor",
+                "CI",
+                "Nombre_Completo",
+                "Telefono",
+                "Estado",
+                "Fecha_Ingreso",
+                "Fecha_Baja",
+                "Observaciones"
+            ]
+
+            columnas = [
+                columna for columna in columnas
+                if columna in conductores.columns
+            ]
+
+            st.dataframe(
+                conductores[columnas],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("Todavía no hay conductores registrados.")
 
     elif section == "Motos":
         st.subheader("Motos")
