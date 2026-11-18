@@ -683,7 +683,7 @@ if role == "ADMIN":
         st.subheader("Conductores")
         st.markdown("### 👤 Datos del conductor")
 
-        with st.form("driver"):
+        witwith st.form("driver", clear_on_submit=True):h st.form("driver"):
             name = st.text_input("Nombre completo")
             ci = st.text_input("Cédula de identidad (CI)", key="driver_ci")
             phone = st.text_input("Teléfono", key="driver_phone")
