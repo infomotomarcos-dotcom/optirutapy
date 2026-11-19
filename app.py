@@ -1,1942 +1,1060 @@
-import streamlit as st
-import requests
-import pandas as pd
-import math
-from datetime import datetime
-from urllib.parse import quote
-from streamlit_geolocation import streamlit_geolocation
+# -*- coding: utf-8 -*-
+"""
+OptiRuta Delivery - nuevo frontend Streamlit
+--------------------------------------------
+Este archivo reúne los cuatro perfiles y los módulos acordados para OptiRuta.
 
-# ============================================================
-# OPTIRUTA DELIVERY - INTERFAZ CLARA AZUL Y ORO (LUQUE)
-# Mantiene la API de Google Apps Script de la version anterior.
-# ============================================================
+IMPORTANTE:
+- Configurá API_URL y API_KEY en .streamlit/secrets.toml.
+- Este frontend envía token de sesión cuando está disponible.
+- Las acciones se envían al endpoint de Apps Script indicado por API_URL.
+- Las acciones marcadas como "legacy" deben existir en el dispatcher actual de
+  Apps Script. Las acciones nuevas deben agregarse al doPost(e) antes de producción.
+- No se confía en el rol enviado por el navegador: Apps Script debe validar token,
+  rol, propiedad del registro y permisos en cada operación.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+import unicodedata
+import uuid
+from datetime import date, datetime
+from typing import Any, Optional
+
+import pandas as pd
+import requests
+import streamlit as st
+
+# ---------------------------------------------------------------------------
+# CONFIGURACIÓN E IDENTIDAD VISUAL
+# ---------------------------------------------------------------------------
 
 st.set_page_config(
     page_title="OptiRuta Delivery",
     page_icon="🛵",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-:root { color-scheme: light !important; }
-.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-  background:#F5F7FB !important; color:#17243A !important;
-}
-[data-testid="stHeader"] { background:rgba(245,247,251,.94) !important; }
-[data-testid="stMainBlockContainer"] { max-width:1480px; padding-top:3.8rem; padding-bottom:3rem; }
-[data-testid="stSidebar"] { background:#FFFFFF !important; border-right:1px solid #DCE4EF !important; }
-[data-testid="stSidebar"] > div:first-child { padding-top:1.2rem; }
-html, body, p, li, label, span, div { color:inherit; }
-[data-testid="stMain"] p, [data-testid="stMain"] li { color:#34445B !important; }
-h1,h2,h3,h4,[data-testid="stMarkdownContainer"] h1,[data-testid="stMarkdownContainer"] h2,[data-testid="stMarkdownContainer"] h3 {
-  color: !important; font-weight:850 !important; letter-spacing:-.025em;
-}
-h1 { font-size:2.15rem !important; }
-h2 { font-size:1.55rem !important; }
-h3 { font-size:1.15rem !important; }
-[data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *,
-.stTextInput label,.stTextArea label,.stNumberInput label,.stSelectbox label,
-.stMultiSelect label,.stDateInput label,.stTimeInput label,.stRadio label,
-.stCheckbox label,.stSlider label,.stFileUploader label,
-[data-testid="stForm"] label,[data-testid="stForm"] label * {
-  color:#1C2D45 !important; opacity:1 !important; font-weight:700 !important;
-}
-input,textarea,[data-baseweb="select"] *,[data-baseweb="input"] *,[data-baseweb="textarea"] *,
-[data-testid="stDateInput"] input {
-  background:#FFFFFF !important; color:#17243A !important; -webkit-text-fill-color:#17243A !important;
-  border-color:#C8D4E3 !important; opacity:1 !important;
-}
-input::placeholder,textarea::placeholder { color:#718096 !important; -webkit-text-fill-color:#718096 !important; opacity:1 !important; }
-[data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] * { color:#64748B !important; opacity:1 !important; }
-[data-testid="stVerticalBlockBorderWrapper"] { background:#FFFFFF !important; border:1px solid #DFE6EF !important; border-radius:18px !important; box-shadow:0 5px 18px rgba(21,47,82,.045); }
-[data-testid="stMetric"] { background:#FFFFFF !important; border:1px solid #DFE6EF !important; border-radius:18px !important; padding:16px 18px !important; box-shadow:0 5px 18px rgba(21,47,82,.045); }
-[data-testid="stMetricLabel"] { color:#52627A !important; font-weight:700 !important; }
-[data-testid="stMetricValue"] { color:#0750B8 !important; font-weight:900 !important; }
-div.stButton > button:not([kind="secondary"]), div.stFormSubmitButton > button, .stLinkButton a {
-  background:#0750B8 !important; color:#FFFFFF !important; -webkit-text-fill-color:#FFFFFF !important;
-  border:1px solid #0750B8 !important; border-radius:12px !important; min-height:46px !important;
-  padding:.55rem 1rem !important; font-weight:800 !important; font-size:15px !important;
-  box-shadow:0 3px 8px rgba(23,74,145,.12);
-}
-div.stButton > button:not([kind="secondary"]) *, div.stFormSubmitButton > button *, .stLinkButton a * {
-  color:#FFFFFF !important; -webkit-text-fill-color:#FFFFFF !important;
-}
-div.stButton > button:not([kind="secondary"]):hover, div.stFormSubmitButton > button:hover, .stLinkButton a:hover {
-  background:#043B89 !important; border-color:#E9A817 !important; color:#FFFFFF !important;
-  -webkit-text-fill-color:#FFFFFF !important;
-}
-div.stButton > button:not([kind="secondary"]):hover *, div.stFormSubmitButton > button:hover *, .stLinkButton a:hover * {
-  color:#FFFFFF !important; -webkit-text-fill-color:#FFFFFF !important;
-}
-button[kind="secondary"] { background:#FFFFFF !important; color:#0750B8 !important; -webkit-text-fill-color:#0750B8 !important; border:1px solid #B8C9DE !important; }
-button[kind="secondary"] * { color:#0750B8 !important; -webkit-text-fill-color:#0750B8 !important; }
-[data-testid="stDataFrame"] { border:1px solid #DCE4EF !important; border-radius:14px !important; overflow:hidden; }
-[data-testid="stForm"] { background:#FFFFFF; border:1px solid #E0E7F0; border-radius:18px; padding:1.1rem 1.2rem .7rem; }
-hr { border-color:#E0E7F0 !important; }
-.optiruta-top { background:linear-gradient(115deg,#0750B8 0%,#0750B8 72%,#E9A817 72%,#E9A817 100%); border-radius:20px; padding:28px 28px; color:#FFFFFF; margin-bottom:22px; box-shadow:0 8px 22px rgba(18,59,112,.12); animation: optirutaEntrada .9s ease-out both; }
-.optiruta-top * { color:#FFFFFF !important; }
-.optiruta-brand { font-size:clamp(42px, 5vw, 66px); font-weight:950; letter-spacing:3px; line-height:1.08; animation: optirutaLogo .85s cubic-bezier(.2,.8,.2,1) both; text-shadow:0 3px 10px rgba(0,0,0,.12); }
-@keyframes optirutaEntrada { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
-@keyframes optirutaLogo { from { opacity:0; transform:scale(.88); letter-spacing:10px; } to { opacity:1; transform:scale(1); letter-spacing:3px; } }
-.optiruta-tag { display:inline-block; margin-top:12px; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.28); border-radius:30px; padding:5px 11px; font-size:12px; font-weight:700; }
-.sidebar-brand { color:#0750B8 !important; font-size:25px; font-weight:950; letter-spacing:1.5px; }
-.sidebar-caption { color:#65758B !important; font-size:12px; font-weight:700; letter-spacing:1px; }
-.flag-blue { height:7px; background:#0750B8; border-radius:7px; }
-.flag-gold { height:4px; background:#E9A817; border-radius:7px; margin-top:5px; }
-.order-number { font-size:25px; color:#0750B8; font-weight:900; }
-.order-address { font-size:18px; color:#17212F; font-weight:750; }
-.small-note { color:#64748B; font-size:13px; }
-.priority-high { color:#A32121; font-weight:900; }
-.priority-normal { color:#0750B8; font-weight:800; }
-/* Identidad visual inspirada en la referencia OptiRuta para PC */
-.optiruta-top {
-  display:flex; align-items:center; justify-content:space-between; gap:24px;
-  background:linear-gradient(112deg,#FFFFFF 0%,#FFFFFF 66%,#FFFAEB 100%);
-  border:1px solid #DCE6F3; border-left:7px solid #0750B8; border-radius:20px;
-  padding:24px 28px; margin:0 0 24px; box-shadow:0 8px 24px rgba(18,59,112,.075);
-  animation:optirutaEntrada .55s ease-out both;
-}
-.optiruta-brand {
-  color:#0750B8 !important; font-size:clamp(34px,4vw,54px); font-weight:950;
-  letter-spacing:-2px; line-height:1; text-shadow:none; animation:none; white-space:nowrap;
-}
-.optiruta-brand .gold { color:#E9A817 !important; }
-.optiruta-brand .delivery { display:block; margin-top:5px; color:#0750B8 !important; font-size:11px;
-  letter-spacing:7px; font-weight:850; text-align:right; }
-.optiruta-slogan { border-left:2px solid #E9A817; padding-left:20px; color:#0750B8 !important;
-  font-size:clamp(15px,1.6vw,21px); font-weight:850; line-height:1.25; max-width:260px; }
-.optiruta-slogan small { display:block; margin-top:7px; color:#6B7890 !important; font-size:12px; font-weight:650; }
-.optiruta-tag { margin-top:0; background:#0750B8; color:#FFFFFF !important; border:1px solid #0750B8;
-  border-radius:999px; padding:11px 16px; font-size:13px; font-weight:800; text-align:center; }
-.sidebar-brand { font-size:28px; letter-spacing:-1px; }
-.sidebar-brand .gold { color:#E9A817 !important; }
-.sidebar-caption { letter-spacing:1.8px; }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong { color:#0750B8 !important; }
-[data-testid="stSidebar"] [role="radiogroup"] { gap:5px; }
-[data-testid="stSidebar"] [role="radiogroup"] label {
-  background:#F7F9FD; border:1px solid #E1E8F2; border-radius:10px; padding:9px 10px;
-}
-[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
-  background:#EAF2FF; border-color:#8FB5EF; box-shadow:inset 3px 0 #0750B8;
-}
-[data-testid="stSidebar"] [data-testid="stButton"] button { min-height:42px !important; }
-[data-testid="stDataFrame"] { box-shadow:0 4px 15px rgba(18,59,112,.04); }
-@media (max-width: 760px) {
- [data-testid="stMainBlockContainer"] { padding-left:1rem; padding-right:1rem; padding-top:2.6rem; }
- h1 { font-size:1.7rem !important; }
- .optiruta-top { padding:17px; }
-}
-</style>
-""", unsafe_allow_html=True)
+AZUL = "#0750B8"
+DORADO = "#E9A817"
+
+st.markdown(
+    f"""
+    <style>
+      :root {{ --or-blue: {AZUL}; --or-gold: {DORADO}; }}
+      .stApp {{ background: #f5f7fb; }}
+      [data-testid="stSidebar"] {{ background: #10243f; }}
+      [data-testid="stSidebar"] * {{ color: #ffffff; }}
+      .or-brand {{
+        background: linear-gradient(110deg, #073b86, {AZUL});
+        color: white; padding: 1.1rem 1.35rem; border-radius: 16px;
+        border-bottom: 5px solid {DORADO}; margin-bottom: 1rem;
+      }}
+      .or-brand h1 {{ color: white; margin: 0; font-size: 1.8rem; }}
+      .or-brand p {{ color: #eaf1ff; margin: .25rem 0 0 0; }}
+      .or-card {{
+        background: white; border: 1px solid #e4eaf2; border-radius: 14px;
+        padding: 1rem; box-shadow: 0 2px 9px rgba(20,45,80,.05);
+      }}
+      .or-muted {{ color: #64748b; font-size: .9rem; }}
+      div.stButton > button[kind="primary"] {{
+        background: {AZUL}; border-color: {AZUL}; color: white;
+      }}
+      div[data-testid="stMetric"] {{
+        background: white; padding: .8rem; border-radius: 12px;
+        border: 1px solid #e4eaf2;
+      }}
+      .or-float {{
+        position: fixed; right: 12px; bottom: 16px; z-index: 999;
+        display: flex; flex-direction: column; gap: 8px;
+      }}
+      .or-float a {{
+        background: #0b3977; color: white; border: 2px solid {DORADO};
+        border-radius: 12px; padding: 9px 12px; text-decoration: none;
+        font-weight: 700; box-shadow: 0 3px 12px #0002;
+      }}
+      @media (max-width: 700px) {{
+        .or-brand h1 {{ font-size: 1.35rem; }}
+        .or-float {{ right: 5px; bottom: 6px; }}
+        .or-float a {{ padding: 7px 9px; font-size: .78rem; }}
+      }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def cfg(name, default=""):
+def brand_header(subtitle: str = "Gestión inteligente de entregas") -> None:
+    st.markdown(
+        f'<div class="or-brand"><h1>🛵 OptiRuta Delivery</h1>'
+        f'<p>{subtitle}</p></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def cfg(name: str, default: str = "") -> str:
     try:
-        return st.secrets[name]
+        return str(st.secrets.get(name, default))
     except Exception:
         return default
 
+
 API_URL = cfg("API_URL")
 API_KEY = cfg("API_KEY")
+TIMEOUT = int(cfg("API_TIMEOUT", "35") or "35")
 
-if not API_URL or not API_KEY:
-    st.error("Falta configurar API_URL y API_KEY en los secretos de Streamlit. No pegues esos datos aquí en el chat.")
-    st.stop()
+# ---------------------------------------------------------------------------
+# ESTADO DE SESIÓN Y CLIENTE API
+# --------------------------------------------------------------------------------------
+
+DEFAULT_STATE = {
+    "logged_in": False,
+    "user": None,
+    "token": "",
+    "staff_token": "",
+    "page": "Inicio",
+    "chat_unread": 0,
+    "alerts_unread": 0,
+}
+for key, value in DEFAULT_STATE.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
-def api(action, **kwargs):
-    payload = {
-        "action": action,
-        "api_key": API_KEY,
-        "user": st.session_state.get("user"),
-        **kwargs
-    }
+class OptiRutaAPIError(Exception):
+    pass
+
+
+def api(action: str, **kwargs: Any) -> Any:
+    """Envía una acción al Web App de Apps Script."""
+    if not API_URL:
+        raise OptiRutaAPIError(
+            "Falta API_URL. Configurá API_URL y API_KEY en .streamlit/secrets.toml."
+        )
+    payload = {"action": action}
+    if API_KEY:
+        payload["api_key"] = API_KEY
+    token = st.session_state.get("token") or st.session_state.get("staff_token")
+    if token:
+        payload["token"] = token
+    payload.update(kwargs)
     try:
-        response = requests.post(API_URL, json=payload, timeout=30)
+        response = requests.post(API_URL, json=payload, timeout=TIMEOUT)
         response.raise_for_status()
-        data = response.json()
-        if data.get("status") != "ok":
-            st.error(data.get("message", "El servidor devolvió un error."))
-            return None
-        return data
-    except Exception as exc:
-        st.error(f"No se pudo comunicar con Google Sheets: {exc}")
-        return None
-
-
-def money(value):
-    try:
-        return "Gs. " + f"{int(float(value or 0)):,}".replace(",", ".")
-    except Exception:
-        return "Gs. 0"
-
-
-def rows(sheet):
-    result = api("list", sheet=sheet)
-    return result.get("rows", []) if result else []
-
-
-def df(sheet):
-    return pd.DataFrame(rows(sheet))
-
-
-def es_enlace_google_maps(url):
-    url = str(url).strip().lower()
-
-    if not url.startswith(("https://", "http://")):
-        return False
-
-    dominios_validos = (
-        "maps.app.goo.gl/",
-        "www.google.com/maps",
-        "google.com/maps",
-        "maps.google.com/"
-    )
-
-    return any(dominio in url for dominio in dominios_validos)
-
-
-
-def _normalizar_busqueda(value):
-    """Normaliza texto para buscar sin distinguir mayúsculas ni tildes."""
-    import unicodedata
-    text = str(value or "").strip().casefold()
-    text = "".join(ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn")
-    return " ".join(text.split())
-
-
-def buscar_cliente(prefix):
-    """Busca en CLIENTES y copia los datos exactos del registro seleccionado."""
-    ("### 👤 Buscar cliente existente")
-    clientes = rows("CLIENTES")
-    query = st.text_input(
-        "Buscar por nombre o teléfono",
-        key=f"{prefix}_client_search",
-        placeholder="Escribí el nombre o el teléfono"
-    ).strip()
-
-    coincidencias = []
-    q = _normalizar_busqueda(query)
-    if q:
-        for index, client in enumerate(clientes):
-            if not isinstance(client, dict):
-                continue
-            nombre = str(client.get("Nombre_Cliente", "") or "").strip()
-            telefono = str(client.get("Telefono_Cliente", "") or "").strip()
-            if q in _normalizar_busqueda(nombre) or q in _normalizar_busqueda(telefono):
-                client_id = str(client.get("ID_Cliente", "") or "").strip()
-                # La etiqueta incorpora ID y fila para distinguir incluso registros duplicados.
-                label = f"{nombre or '(Sin nombre)'} · {telefono or 'Sin teléfono'} · {client_id or 'fila ' + str(index + 1)}"
-                identity = f"{client_id or 'sin-id'}::fila-{index}"
-                coincidencias.append((label, client, identity))
-
-    options = ["— No seleccionar un cliente existente —"] + [item[0] for item in coincidencias]
-    choice_key = f"{prefix}_client_choice"
-    if st.session_state.get(choice_key) not in options:
-        st.session_state[choice_key] = options[0]
-    selected_label = st.selectbox(
-        "Resultados de clientes", options, key=choice_key,
-        help="Elegí un resultado para cargar sus datos guardados."
-    )
-    selected = next((item for item in coincidencias if item[0] == selected_label), None)
-    identity_key = f"{prefix}_loaded_client_identity"
-    previous_identity = st.session_state.get(identity_key)
-
-    if selected:
-        _, client, identity = selected
-        # Sin caché de valores: cada selección aplica el registro que corresponde.
-        if previous_identity != identity:
-            st.session_state[f"{prefix}_customer_name"] = str(client.get("Nombre_Cliente", "") or "")
-            st.session_state[f"{prefix}_customer_phone"] = str(client.get("Telefono_Cliente", "") or "")
-            st.session_state[f"{prefix}_customer_address"] = str(client.get("Direccion_Habitual", "") or "")
-            st.session_state[f"{prefix}_customer_maps"] = str(client.get("Ubicacion_Google_Maps", "") or "")
-            st.session_state[identity_key] = identity
-    elif previous_identity:
-        # Al deseleccionar un cliente, limpiar sus datos para no dejar los del anterior.
-        for field in ("customer_name", "customer_phone", "customer_address", "customer_maps"):
-            st.session_state[f"{prefix}_{field}"] = ""
-        st.session_state[identity_key] = None
-
-    if q and not coincidencias:
-        st.info("No encontramos coincidencias. Podés ingresar un cliente nuevo; no se crea desde la búsqueda.")
-    elif not q:
-        st.caption("La búsqueda consulta la hoja CLIENTES. Elegí un resultado para recuperar sus datos.")
-    return selected[1] if selected else None
-
-
-def _digits_phone(value):
-    return "".join(ch for ch in str(value or "") if ch.isdigit())
-
-
-def _same_customer(a, b):
-    """Compara identidad por teléfono normalizado o, si falta, por nombre normalizado."""
-    phone_a, phone_b = _digits_phone(a.get("Telefono_Cliente")), _digits_phone(b.get("Telefono_Cliente"))
-    name_a, name_b = _normalizar_busqueda(a.get("Nombre_Cliente")), _normalizar_busqueda(b.get("Nombre_Cliente"))
-    return bool((phone_a and phone_b and phone_a == phone_b) or (name_a and name_b and name_a == name_b))
-
-
-def asegurar_cliente(record):
-    """Registra al cliente una sola vez desde el flujo existente de pedido; no agrega formularios."""
-    name = str(record.get("Nombre_Cliente", "") or "").strip()
-    phone = str(record.get("Telefono_Cliente", "") or "").strip()
-    if not name or not phone:
-        return
-    clientes = rows("CLIENTES")
-    if any(_same_customer(record, client) for client in clientes if isinstance(client, dict)):
-        return
-    client_record = {
-        "ID_Cliente": "",
-        "Nombre_Cliente": name,
-        "Telefono_Cliente": phone,
-        "Direccion_Habitual": str(record.get("Direccion_Entrega", "") or "").strip(),
-        "Ubicacion_Google_Maps": str(record.get("Ubicacion_Google_Maps", "") or "").strip(),
-        "Fecha_Registro": datetime.now().isoformat(timespec="seconds"),
-        "Estado": "Activo",
-        "ID_Emprendedor": str(record.get("ID_Emprendedor", "") or "")
-    }
-    # Si la agenda no puede actualizarse, no bloqueamos el pedido; la API reportará el error.
-    api("save", sheet="CLIENTES", record=client_record)
-
-
-def pedido_duplicado_reciente(record, segundos=30):
-    """Evita reenvíos accidentales del mismo pedido dentro de una ventana breve."""
-    now = datetime.now()
-    fields = ("ID_Emprendedor", "Nombre_Cliente", "Telefono_Cliente", "Direccion_Entrega",
-              "Descripcion_Pedido", "Costo_Producto", "Costo_Envio", "Metodo_Pago")
-    for old in rows("PEDIDOS"):
-        if not isinstance(old, dict):
-            continue
         try:
-            stamp = str(old.get("Fecha_Carga", "") or "").replace("Z", "+00:00")
-            old_dt = datetime.fromisoformat(stamp)
-            if old_dt.tzinfo is not None:
-                old_dt = old_dt.replace(tzinfo=None)
-            if abs((now - old_dt).total_seconds()) > segundos:
-                continue
+            result = response.json()
+        except ValueError as exc:
+            raise OptiRutaAPIError(
+                f"Apps Script devolvió una respuesta que no es JSON: {response.text[:300]}"
+            ) from exc
+    except requests.RequestException as exc:
+        raise OptiRutaAPIError(f"No se pudo conectar con Apps Script: {exc}") from exc
+
+    if isinstance(result, dict):
+        status = str(result.get("status", "")).lower()
+        if status in {"error", "failed", "fail"} or result.get("ok") is False:
+            raise OptiRutaAPIError(
+                result.get("message") or result.get("error") or "La operación fue rechazada."
+            )
+        if status == "ok":
+            for key in ("data", "result", "record", "rows"):
+                if key in result:
+                    return result[key]
+    return result
+
+
+def safe_api(action: str, **kwargs: Any) -> tuple[bool, Any]:
+    try:
+        return True, api(action, **kwargs)
+    except Exception as exc:
+        st.error(str(exc))
+        return False, None
+
+
+def rows(sheet: str) -> list[dict]:
+    """Lectura compatible con el dispatcher antiguo; backend debe filtrar por token."""
+    result = api("list", sheet=sheet)
+    if isinstance(result, dict):
+        result = result.get("rows", result.get("data", []))
+    return result if isinstance(result, list) else []
+
+
+def df(sheet: str) -> pd.DataFrame:
+    try:
+        return pd.DataFrame(rows(sheet))
+    except Exception as exc:
+        st.warning(f"No se pudo consultar {sheet}: {exc}")
+        return pd.DataFrame()
+
+
+def save(sheet: str, record: dict) -> Any:
+    """Compatibilidad con la acción save existente. No usar para saltar permisos."""
+    return api("save", sheet=sheet, record=record)
+
+
+def money(value: Any) -> str:
+    try:
+        amount = float(str(value or 0).replace(".", "").replace(",", "."))
+    except (TypeError, ValueError):
+        amount = 0
+    return "Gs. " + f"{amount:,.0f}".replace(",", ".")
+
+
+def norm(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    return "".join(c for c in text if not unicodedata.combining(c)).strip().lower()
+
+
+def user_value(*keys: str, default: str = "") -> str:
+    user = st.session_state.get("user") or {}
+    for key in keys:
+        value = user.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return default
+
+
+def current_role() -> str:
+    return user_value("Rol", "role", "Role", "Tipo_Usuario").upper()
+
+
+def current_id() -> str:
+    return user_value(
+        "ID_Usuario", "ID_Emprendedor", "ID_Conductor", "ID_Operador",
+        "reference_id", "id", "ID"
+    )
+
+
+def do_logout() -> None:
+    token = st.session_state.get("token") or st.session_state.get("staff_token")
+    if token:
+        try:
+            api("logout")
         except Exception:
-            continue
-        same = True
-        for field in fields:
-            if field in ("Nombre_Cliente", "Direccion_Entrega", "Descripcion_Pedido", "Metodo_Pago"):
-                same = _normalizar_busqueda(old.get(field)) == _normalizar_busqueda(record.get(field))
-            elif field == "Telefono_Cliente":
-                same = _digits_phone(old.get(field)) == _digits_phone(record.get(field))
-            else:
-                same = str(old.get(field, "") or "") == str(record.get(field, "") or "")
-            if not same:
-                break
-        if same:
-            return True
-    return False
+            pass
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 
-def guardar_pedido_seguro(record):
-    """Centraliza la protección contra pedidos repetidos y clientes duplicados."""
-    if pedido_duplicado_reciente(record):
-        st.warning("No se guardó: encontramos un pedido idéntico registrado hace muy poco. Revisá la lista de pedidos antes de volver a enviarlo.")
-        return
-    asegurar_cliente(record)
-    save("PEDIDOS", record)
+def show_table(data: Any, empty: str = "No hay registros para mostrar.") -> None:
+    if isinstance(data, pd.DataFrame):
+        frame = data
+    elif isinstance(data, list):
+        frame = pd.DataFrame(data)
+    elif isinstance(data, dict):
+        frame = pd.DataFrame(data.get("rows", data.get("data", [])))
+    else:
+        frame = pd.DataFrame()
+    if frame.empty:
+        st.info(empty)
+    else:
+        st.dataframe(frame, use_container_width=True, hide_index=True)
 
 
-def save(sheet, record):
-    result = api("save", sheet=sheet, record=record)
-    if result:
-        if result.get("duplicate"):
-            st.warning(result.get("message", "No se guardó porque el registro ya existe."))
-            return False
-        st.success(result.get("message", "Guardado correctamente."))
-        st.rerun()
-        return True
-    return False
+def metric_row(items: list[tuple[str, Any]]) -> None:
+    cols = st.columns(len(items))
+    for col, (label, value) in zip(cols, items):
+        col.metric(label, value)
 
 
-def distance_km(lat1, lon1, lat2, lon2):
-    """Distancia aproximada en linea recta entre dos coordenadas GPS."""
-    radius = 6371.0
-    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
-    dlat = math.radians(float(lat2) - float(lat1))
-    dlon = math.radians(float(lon2) - float(lon1))
-    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
-    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+def status_badge(value: Any) -> str:
+    return str(value or "Sin estado")
 
 
-def maps_url(address):
-    return "https://www.google.com/maps/search/?api=1&query=" + quote(str(address or ""))
+def require_config() -> bool:
+    if not API_URL:
+        st.error(
+            "Todavía falta configurar la conexión. Creá "
+            "`.streamlit/secrets.toml` con API_URL y API_KEY."
+        )
+        st.code('API_URL = "URL_DE_TU_WEB_APP"\nAPI_KEY = "TU_API_KEY"')
+        return False
+    return True
 
 
+# ---------------------------------------------------------------------------
+# LOGIN
+# ---------------------------------------------------------------------------
 
-def brand_header(subtitle="Sistema de gestión de delivery", show_tag=True):
-    # Cabecera de marca de OptiRuta.
-    safe_subtitle = (
-        str(subtitle)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+ROLE_LABELS = {
+    "ADMIN": "Administrador",
+    "EMPRENDEDOR": "Emprendedor",
+    "CONDUCTOR": "Conductor",
+    "OPERADOR": "Operador",
+}
 
-    tag_html = (
-        f'<div class="optiruta-tag">{safe_subtitle}</div>'
-        if show_tag else ""
-    )
 
-    st.markdown(
-        '<div class="optiruta-top">'
-        '<div class="optiruta-brand">Opti<span class="gold">Ruta</span>'
-        '<span class="delivery">DELIVERY</span></div>'
-        '<div class="optiruta-slogan">Tu ruta,<br>nuestro compromiso'
-        '<small>Gestión de pedidos y entregas</small></div>'
-        f'{tag_html}'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-if "user" not in st.session_state:
-    st.session_state.user = None
-if "portal" not in st.session_state:
-    st.session_state.portal = None
-
-# -------------------- ACCESO / INICIO --------------------
-if not st.session_state.user:
-    if not st.session_state.portal:
-        brand_header(show_tag=False)
-        st.title("Bienvenido a OptiRuta")
-        st.write("Elegí tu perfil para ingresar al espacio de trabajo correspondiente.")
-    if not st.session_state.portal:
-        p1, p2, p3, p4 = st.columns(4)
-        with p1:
-            if st.button("🏪  EMPRENDEDORES", use_container_width=True):
-                st.session_state.portal = "EMPRENDEDOR"
-                st.rerun()
-        with p2:
-            if st.button("🛵  CONDUCTORES DELIVERY", use_container_width=True):
-                st.session_state.portal = "CONDUCTOR"
-                st.rerun()
-        with p3:
-            if st.button("🧭  OPERADORES", use_container_width=True):
-                st.session_state.portal = "OPERADOR"
-                st.rerun()
-        with p4:
-            if st.button("⚙️  ADMINISTRADOR", use_container_width=True):
-                st.session_state.portal = "ADMIN"
-                st.rerun()
-
-    if st.session_state.portal:
-        portal_names = {
-            "EMPRENDEDOR": "Acceso de emprendedores",
-            "CONDUCTOR": "Acceso de conductores",
-            "ADMIN": "Acceso de administración",
-            "OPERADOR": "Acceso de operadores"
-        }
-        brand_header(portal_names[st.session_state.portal])
-        st.subheader(portal_names[st.session_state.portal])
-        st.markdown("### 🔐 Ingresá tus datos de acceso")
-        with st.form("login_form", enter_to_submit=True):
-            st.markdown("""
-                <style>
-                div[data-testid="stForm"] input {
-                    background-color: #FFFFFF !important;
-                    color: #17365D !important;
-                    -webkit-text-fill-color: #17365D !important;
-                    border: 1px solid #B8D0F0 !important;
-                }
-
-                div[data-testid="stForm"] input::placeholder {
-                    color: #64748B !important;
-                    -webkit-text-fill-color: #64748B !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-
+def login_screen() -> None:
+    brand_header("Plataforma de administración y logística")
+    left, center, right = st.columns([1, 1.2, 1])
+    with center:
+        st.markdown("### Ingresar a OptiRuta")
+        with st.form("login_form"):
             username = st.text_input("Usuario")
             password = st.text_input("Contraseña", type="password")
-            submitted = st.form_submit_button("INGRESAR", use_container_width=True)
-        
+            submitted = st.form_submit_button("Ingresar", type="primary", use_container_width=True)
         if submitted:
-            result = api("login", username=username.strip(), password=password)
-
-            if result and result.get("user"):
-                logged_user = result["user"]
-                actual_role = str(logged_user.get("Rol", "")).upper()
-
-
-                if actual_role != st.session_state.portal:
-                    st.error("Este usuario no corresponde a este tipo de acceso. Elegí el acceso correcto.")
-
-                else:
-                    if actual_role == "ADMIN":
-                        staff_auth = api(
-                            "staff_login",
-                            username=username.strip(),
-                            password=password
-                        )
-
-                        if staff_auth and staff_auth.get("token"):
-                            st.session_state.staff_token = staff_auth["token"]
-                            st.session_state.user = logged_user
-                            st.rerun()
-                        else:
-                            st.error("No se pudo iniciar la sesión de Caja.")
-
-                    else:
-                        if actual_role == "EMPRENDEDOR":
-                            st.session_state.entrepreneur_view = None
-
-                        st.session_state.user = logged_user
-                        st.rerun()
-
-
-            elif result:
-                st.error("Usuario o contraseña incorrectos, o cuenta inactiva.")
-        if st.button("← Volver a los accesos"):
-            st.session_state.portal = None
-            st.rerun()
-    st.stop()
-
-user = st.session_state.user
-role = str(user.get("Rol", "")).upper()
-uid = user.get("ID_Referencia", "")
-
-with st.sidebar:
-    st.markdown('<div class="sidebar-brand">Opti<span class="gold">Ruta</span></div><div class="sidebar-caption">DELIVERY MANAGEMENT</div>', unsafe_allow_html=True)
-    st.markdown('<div class="flag-blue"></div><div class="flag-gold"></div>', unsafe_allow_html=True)
-    st.write("")
-    st.write(f"**{user.get('Usuario', 'Usuario')}**")
-    st.caption({"ADMIN":"Administración", "EMPRENDEDOR":"Portal emprendedor", "CONDUCTOR":"Portal conductor", "OPERADOR":"Portal operador"}.get(role, role))
-    if role == "ADMIN":
-        st.markdown("**MENÚ PRINCIPAL**")
-        st.radio(
-            "Secciones", ["Resumen", "Pedidos", "Emprendedores", "Conductores", "Operadores", "Motos", "Caja y movimientos", "Ubicaciones", "Usuarios"],
-            key="admin_section", label_visibility="collapsed"
-        )
- 
-    st.divider()
-    if st.button("↩ CERRAR SESIÓN", use_container_width=True):
-        st.session_state.user = None
-        st.session_state.portal = None
-        st.session_state.entrepreneur_view = None
-        st.rerun()
-
-# -------------------- ADMINISTRADOR --------------------
-if role == "ADMIN":
-    brand_header("Panel de administración · Moneda: PYG")
-    st.caption("En los formularios, usá Tab para pasar al siguiente campo y Enter dentro de los campos de texto multilínea para escribir otro renglón. En el inicio de sesión, Enter confirma el acceso.")
-    section = st.session_state.get("admin_section", "Resumen")
-
-    if section == "Resumen":
-        orders = df("PEDIDOS")
-        drivers = df("CONDUCTORES")
-        entrepreneurs = df("EMPRENDEDORES")
-        if not orders.empty and "Estado_Registro" in orders.columns:
-            orders = orders[orders["Estado_Registro"].astype(str) != "Eliminado"]
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Pedidos registrados", len(orders))
-        c2.metric("Conductores", len(drivers))
-        c3.metric("Emprendedores", len(entrepreneurs))
-        if not orders.empty and "Estado_Reparto" in orders.columns:
-            st.subheader("Estado de los pedidos")
-            counts = orders["Estado_Reparto"].fillna("Sin estado").value_counts()
-            cols = st.columns(4)
-            for i, state_name in enumerate(["Pendiente", "Retirado", "En ruta", "Entregado"]):
-                with cols[i]:
-                    st.metric(state_name, int(counts.get(state_name, 0)))
-                    if st.button(f"Ver {state_name.lower()}", key=f"quick_{state_name}", use_container_width=True):
-                        st.session_state["orders_filter"] = state_name
-                        st.session_state["admin_section"] = "Pedidos"
-                        st.rerun()
-            st.bar_chart(counts)
-            q1, q2 = st.columns(2)
-            with q1:
-                if st.button("🛵 REASIGNAR PEDIDOS", use_container_width=True):
-                    st.session_state["orders_filter"] = "Todos"
-                    st.session_state["admin_section"] = "Pedidos"
-                    st.rerun()
-            with q2:
-                if st.button("＋ NUEVO PEDIDO", use_container_width=True):
-                    st.session_state["orders_filter"] = "Todos"
-                    st.session_state["admin_section"] = "Pedidos"
-                    st.rerun()
-
-    elif section == "Pedidos":
-        st.subheader("Registrar pedido")
-        entrepreneurs = rows("EMPRENDEDORES")
-        drivers = rows("CONDUCTORES")
-        motos = rows("MOTOS")
-        st.markdown("### 🧾 Datos del nuevo pedido")
-        buscar_cliente("admin_order")
-        with st.form("new_order", enter_to_submit=False):
-            em_options = {
-                f"{x.get('Nombre_Comercial')} ({x.get('ID_Emprendedor')})": x.get("ID_Emprendedor")
-                for x in entrepreneurs if x.get("Estado", "Activo") == "Activo"
-            }
-            em_label = st.selectbox("Emprendedor", list(em_options) or ["Sin emprendedores"])
-            customer = st.text_input("Nombre del cliente", key="admin_order_customer_name")
-            phone = st.text_input("Teléfono", key="admin_order_customer_phone")
-            address = st.text_input("Dirección de entrega", key="admin_order_customer_address")
-            maps_location = st.text_input("Ubicación de Google Maps", placeholder="Pegá el enlace compartido", key="admin_order_customer_maps")
-            description = st.text_area("Descripción del pedido", height=90)
-            priority = st.selectbox("Prioridad del pedido", ["Normal", "Alta", "Urgente"])
-            a, b, c = st.columns(3)
-            product_cost = a.number_input("Costo del producto (Gs.)", min_value=0, step=1000)
-            shipping = b.number_input("Costo del envío (Gs.)", min_value=0, value=15000, step=1000)
-            prepaid = c.number_input("Anticipo ya pagado (Gs.)", min_value=0, step=1000)
-            method = st.selectbox("Pago del cliente", ["Efectivo", "Transferencia al emprendedor", "Efectivo + transferencia", "Pagado adelantado"])
-            if method == "Efectivo + transferencia":
-                transfer = st.number_input("Parte transferida al emprendedor (Gs.)", min_value=0, step=1000)
-            elif method in ["Transferencia al emprendedor", "Pagado adelantado"]:
-                transfer = int(product_cost + shipping)
-            else:
-                transfer = 0
-            transfer_status = st.selectbox("Estado de la transferencia del cliente", ["No corresponde", "Pendiente de confirmar", "Acreditada al emprendedor"], index=2 if method == "Pagado adelantado" else (1 if transfer > 0 else 0))
-            payment_note = st.text_area("Acuerdo de pago conversado por WhatsApp", height=70)
-            if st.form_submit_button("REGISTRAR PEDIDO", use_container_width=True):
-                total = int(product_cost + shipping)
-                record = {
-                    "ID_Pedido": "", "Fecha_Carga": datetime.now().isoformat(timespec="seconds"),
-                    "ID_Emprendedor": em_options.get(em_label, ""), "Nombre_Cliente": customer,
-                    "Telefono_Cliente": phone, "Direccion_Entrega": address,
-                    "Ubicacion_Google_Maps": maps_location.strip(), "Descripcion_Pedido": description,
-                    "Prioridad": priority, "Costo_Producto": int(product_cost), "Costo_Envio": int(shipping), "Total_Cobrar": total,
-                    "Metodo_Pago": method, "Monto_Anticipado": int(prepaid), "Monto_Efectivo_Cobrado": 0,
-                    "Monto_Transferencia_Adicional": int(transfer), "Estado_Transferencia_Cliente": transfer_status,
-                    "Instrucciones_Pago": payment_note, "ID_Conductor": "", "ID_Moto": "",
-                    "Estado_Reparto": "Pendiente", "Fecha_Entrega": "", "Estado_Liquidacion": "Pendiente",
-                    "Estado_Registro": "Activo", "Observaciones": ""
-                }
-                if not customer or not address:
-                    st.error("Completá el nombre y la dirección.")
-                else:
-                    guardar_pedido_seguro(record)
-
-        st.divider()
-        st.subheader("Asignar o modificar pedidos")
-        data = df("PEDIDOS")
-        if not data.empty:
-            if "Estado_Registro" in data.columns:
-                active_data = data[data["Estado_Registro"].astype(str) != "Eliminado"].copy()
-                show_deleted = st.checkbox("Mostrar pedidos eliminados", value=False)
-                if show_deleted:
-                    data_view = data
-                else:
-                    data_view = active_data
-            else:
-                data_view = data
-            filter_options = ["Todos", "Pendiente", "Retirado", "En ruta", "Entregado", "Cancelado"]
-            default_filter = st.session_state.pop("orders_filter", "Todos")
-            filter_state = st.selectbox("Filtrar por estado", filter_options, index=filter_options.index(default_filter) if default_filter in filter_options else 0)
-            if filter_state != "Todos" and "Estado_Reparto" in data_view.columns:
-                data_view = data_view[data_view["Estado_Reparto"].astype(str) == filter_state]
-            st.dataframe(data_view, use_container_width=True, hide_index=True)
-            ids = data_view.get("ID_Pedido", pd.Series(dtype=str)).astype(str).tolist()
-            if not ids:
-                st.info("No hay pedidos para el filtro seleccionado.")
-                st.stop()
-            selected = st.selectbox("Pedido", ids)
-            chosen = data[data["ID_Pedido"].astype(str) == str(selected)].iloc[0].to_dict() if selected else {}
-            active_drivers = [d for d in drivers if d.get("Estado", "Activo") == "Activo"]
-            active_motos = [m for m in motos if m.get("Estado", "Activa") == "Activa"]
-            driver_map = {f"{d.get('Nombre_Completo')} ({d.get('ID_Conductor')})": d.get("ID_Conductor") for d in active_drivers}
-            moto_map = {f"{m.get('Descripcion')} ({m.get('ID_Moto')})": m.get("ID_Moto") for m in active_motos}
-            current_driver_label = next((k for k, v in driver_map.items() if str(v) == str(chosen.get("ID_Conductor", ""))), "")
-            current_moto_label = next((k for k, v in moto_map.items() if str(v) == str(chosen.get("ID_Moto", ""))), "")
-            st.markdown("### 🛵 Datos de asignación y estado")
-            with st.form("assign", enter_to_submit=False):
-                dl = st.selectbox("Conductor", [""] + list(driver_map), index=(1 + list(driver_map).index(current_driver_label)) if current_driver_label else 0)
-                ml = st.selectbox("Moto", [""] + list(moto_map), index=(1 + list(moto_map).index(current_moto_label)) if current_moto_label else 0)
-                states = ["Pendiente", "Retirado", "En ruta", "Entregado", "Cancelado"]
-                old_state = chosen.get("Estado_Reparto", "Pendiente")
-                state = st.selectbox("Estado", states, index=states.index(old_state) if old_state in states else 0)
-                if st.form_submit_button("GUARDAR ASIGNACIÓN"):
-                    chosen["ID_Conductor"] = driver_map.get(dl, "")
-                    chosen["ID_Moto"] = moto_map.get(ml, "")
-                    chosen["Estado_Reparto"] = state
-                    if state == "Entregado" and not chosen.get("Fecha_Entrega"):
-                        chosen["Fecha_Entrega"] = datetime.now().isoformat(timespec="seconds")
-                    save("PEDIDOS", chosen)
-            st.divider()
-            st.markdown("### 🗑️ Dar de baja un pedido")
-            st.caption("La baja es lógica: el pedido queda oculto de la lista habitual y conserva su historial. No se borra físicamente de la hoja.")
-            confirm_delete = st.checkbox(f"Confirmo dar de baja el pedido {selected}", key=f"confirm_delete_{selected}")
-            if st.button("DAR DE BAJA PEDIDO", disabled=not confirm_delete, type="secondary", use_container_width=True):
-                chosen["Estado_Registro"] = "Eliminado"
-                chosen["Estado_Reparto"] = "Cancelado"
-                chosen["Observaciones"] = (str(chosen.get("Observaciones", "")) + " | Baja lógica por administración " + datetime.now().isoformat(timespec="seconds")).strip(" |")
-                save("PEDIDOS", chosen)
-        else:
-            st.info("Todavía no hay pedidos.")
-
-    elif section == "Emprendedores":
-        st.subheader("Emprendedores")
-        st.markdown("### 🏪 Datos del emprendedor")
-        with st.form("entrepreneur"):
-            name = st.text_input("Nombre comercial")
-            phone = st.text_input("Teléfono de contacto")
-            address = st.text_input("Dirección")
-            fee = st.number_input("Tarifa base de envío (Gs.)", min_value=0, value=15000, step=1000)
-            if st.form_submit_button("AGREGAR EMPRENDEDOR"):
-                save("EMPRENDEDORES", {"ID_Emprendedor": "", "Nombre_Comercial": name, "Telefono": phone, "Direccion": address, "Tarifa_Envio_Base": int(fee), "Estado": "Activo", "Observaciones": ""})
-        st.dataframe(df("EMPRENDEDORES"), use_container_width=True, hide_index=True)
-
-    elif section == "Conductores":
-        st.subheader("Conductores")
-        st.markdown("### 👤 Datos del conductor")
-
-        with st.form("driver", clear_on_submit=True):
-            name = st.text_input("Nombre completo")
-            ci = st.text_input("Cédula de identidad (CI)", key="driver_ci")
-            phone = st.text_input("Teléfono", key="driver_phone")
-
-            if st.form_submit_button("AGREGAR CONDUCTOR"):
-                if not name.strip():
-                    st.error("Ingresá el nombre completo.")
-                elif not ci.strip():
-                    st.error("La cédula de identidad (CI) es obligatoria.")
-                else:
-                    save("CONDUCTORES", {
-                        "ID_Conductor": "",
-                        "CI": ci.strip(),
-                        "Nombre_Completo": name.strip(),
-                        "Telefono": phone.strip(),
-                        "Estado": "Activo",
-                        "Fecha_Ingreso": datetime.now().date().isoformat(),
-                        "Fecha_Baja": "",
-                        "Observaciones": ""
-                    })
-
-        conductores = df("CONDUCTORES")
-
-        if not conductores.empty:
-            columnas = [
-                "ID_Conductor",
-                "CI",
-                "Nombre_Completo",
-                "Telefono",
-                "Estado",
-                "Fecha_Ingreso",
-                "Fecha_Baja",
-                "Observaciones"
-            ]
-
-            columnas = [
-                columna for columna in columnas
-                if columna in conductores.columns
-            ]
-
-            st.dataframe(
-                conductores[columnas],
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("Todavía no hay conductores registrados.")
-
-    elif section == "Motos":
-        st.subheader("Motos")
-        st.markdown("### 🏍️ Datos de la moto")
-        with st.form("bike"):
-            desc = st.text_input("Descripción / modelo")
-            plate = st.text_input("Patente")
-            ownership = st.selectbox("Propiedad", ["OPTIRUTA", "CONDUCTOR"])
-            owner = st.text_input("Propietario (si es del conductor)")
-            if st.form_submit_button("AGREGAR MOTO"):
-                save("MOTOS", {"ID_Moto": "", "Descripcion": desc, "Patente": plate, "Propiedad": ownership, "Propietario": owner, "Conductor_Asignado": "", "Estado": "Activo", "Observaciones": ""})
-        st.dataframe(df("MOTOS"), use_container_width=True, hide_index=True)
-
-    elif section == "Caja y movimientos":
-        st.subheader("Caja y movimientos")
-        st.markdown("### 🧾 Rendición de efectivo del conductor")
-        drivers_for_cash = rows("CONDUCTORES")
-        driver_cash_map = {f"{d.get('Nombre_Completo')} ({d.get('ID_Conductor')})": d.get('ID_Conductor') for d in drivers_for_cash if d.get("Estado", "Activo") == "Activo"}
-        delivered = df("PEDIDOS")
-        if not delivered.empty and "Estado_Reparto" in delivered.columns:
-            delivered = delivered[delivered["Estado_Reparto"].astype(str) == "Entregado"].copy()
-            if "Estado_Registro" in delivered.columns:
-                delivered = delivered[delivered["Estado_Registro"].astype(str) != "Eliminado"]
-        if not delivered.empty and "Estado_Liquidacion" in delivered.columns:
-            pending_cash = delivered[delivered["Estado_Liquidacion"].astype(str).isin(["Pendiente", "", "nan"])].copy()
-        else:
-            pending_cash = delivered.copy()
-
-
-        st.subheader("Iniciar rendición de conductor")
-
-        with st.form("driver_cash_start", enter_to_submit=False):
-            driver_label = st.selectbox(
-                "Conductor que rinde",
-                list(driver_cash_map) or [""]
-            )
-            driver_id = driver_cash_map.get(driver_label, "")
-
-            st.caption(
-                "El sistema incluirá los pedidos entregados que todavía "
-                "no fueron incluidos en otra rendición."
-            )
-
-            start_submit = st.form_submit_button(
-                "INICIAR RENDICIÓN",
-                use_container_width=True,
-                disabled=not driver_id
-            )
-
-        if start_submit:
-            staff_token = st.session_state.get("staff_token", "")
-
-            if not staff_token:
-                st.error("No hay una sesión activa de Caja. Cerrá sesión e ingresá nuevamente.")
-            else:
-                result = api(
-                    "cashout_start",
-                    token=staff_token,
-                    ID_Conductor=driver_id
-                )
-
-                if result:
-                    st.success(result.get("message", "Rendición iniciada."))
-                    st.rerun()
-        st.markdown("### 📋 Rendiciones pendientes de confirmación")
-
-        staff_token = st.session_state.get("staff_token", "")
-
-        if staff_token:
-            pending_result = api(
-                "cashout_pending",
-                token=staff_token
-            )
-
-            if pending_result is not None:
-                pending_rows = pending_result.get("rows", [])
-
-                if pending_rows:
-                    pending_df = pd.DataFrame(pending_rows)
-
-                    columns_to_show = [
-                        "ID_Cierre_Caja",
-                        "ID_Conductor",
-                        "ID_Moto",
-                        "Fecha_Solicitud",
-                        "Pedidos_Entregados",
-                        "Total_Efectivo_Esperado",
-                        "Iniciado_Por"
-                    ]
-
-                    visible_columns = [
-                        col for col in columns_to_show
-                        if col in pending_df.columns
-                    ]
-
-                    st.dataframe(
-                        pending_df[visible_columns],
-                        use_container_width=True,
-                        hide_index=True
+            if not username or not password:
+                st.warning("Ingresá tu usuario y contraseña.")
+                return
+            if not require_config():
+                return
+            try:
+                result = api("login", username=username, password=password)
+                if not isinstance(result, dict):
+                    raise OptiRutaAPIError("La respuesta de login no contiene los datos de sesión.")
+                token = result.get("token") or result.get("session_token") or ""
+                user = result.get("user") or result.get("usuario") or result
+                role = str(user.get("Rol") or user.get("role") or user.get("Role") or "").upper()
+                if role not in ROLE_LABELS:
+                    raise OptiRutaAPIError("El backend no devolvió un rol válido.")
+                st.session_state["user"] = user
+                st.session_state["token"] = token
+                st.session_state["logged_in"] = True
+                st.session_state["page"] = "Inicio"
+                # El backend nuevo debe devolver token para todos los roles.
+                if not token:
+                    st.warning(
+                        "El acceso fue aceptado, pero Apps Script no devolvió token. "
+                        "Las operaciones protegidas pueden fallar hasta corregir el login."
                     )
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+    st.caption("Acceso protegido por usuario y contraseña de OptiRuta.")
 
 
-                st.markdown("### 💵 Confirmar recepción de efectivo")
+# ---------------------------------------------------------------------------
+# COMPONENTES COMUNES
+# ---------------------------------------------------------------------------
 
-                if pending_rows:
-                    cashout_map = {
-                        f"{r.get('ID_Cierre_Caja')} - Conductor {r.get('ID_Conductor')} - Gs. {r.get('Total_Efectivo_Esperado', 0):,.0f}": r
-                        for r in pending_rows
-                    }
-
-                    with st.form("cashout_confirm_form", enter_to_submit=False):
-                        selected_cashout_label = st.selectbox(
-                            "Seleccionar rendición recibida",
-                            list(cashout_map)
-                        )
-
-                        selected_cashout = cashout_map.get(
-                            selected_cashout_label, {}
-                        )
-
-                        st.write(
-                            "Efectivo esperado: Gs. "
-                            f"{float(selected_cashout.get('Total_Efectivo_Esperado') or 0):,.0f}"
-                        )
-
-                        received_amount = st.number_input(
-                            "Efectivo recibido físicamente (Gs.)",
-                            min_value=0,
-                            step=1000,
-                            value=0
-                        )
-
-                        cashier_observations = st.text_area(
-                            "Observaciones del cajero (opcional)"
-                        )
-
-                        confirm_submit = st.form_submit_button(
-                            "CONFIRMAR RECEPCIÓN",
-                            use_container_width=True
-                        )
-
-                    if confirm_submit:
-                        confirm_result = api(
-                            "cashout_confirm",
-                            token=staff_token,
-                            ID_Cierre_Caja=selected_cashout.get("ID_Cierre_Caja"),
-                            efectivo_recibido=int(received_amount),
-                            observaciones=cashier_observations
-                        )
-
-                        if confirm_result:
-                            st.success(confirm_result.get("message", "Recepción confirmada."))
-                            st.rerun()
-                else:
-                    st.info("No hay rendiciones para confirmar.")
-        else:
-            st.warning("No hay una sesión activa de Caja.")
-
-        
-        st.markdown("### 🔒 Cierre definitivo del turno")
-
-        sessions_for_close = rows("SESIONES_CONDUCTOR")
-
-        active_sessions = [
-            s for s in sessions_for_close
-            if str(s.get("Rol", "CONDUCTOR")).upper() == "CONDUCTOR"
-            and str(s.get("Estado", "")).upper() in ["ACTIVA", "PENDIENTE_CAJA"]
-        ]
-
-        if active_sessions:
-            session_map = {
-                (
-                    f"Conductor: {s.get('ID_Conductor')} | "
-                    f"Moto: {s.get('ID_Moto')} | "
-                    f"Sesión: {s.get('ID_Sesion')}"
-                ): s
-                for s in active_sessions
-            }
-
-            with st.form("cashout_close_session_form", enter_to_submit=False):
-                selected_session_label = st.selectbox(
-                    "Seleccionar turno del conductor",
-                    list(session_map.keys())
-                )
-
-                selected_session = session_map.get(
-                    selected_session_label, {}
-                )
-
-                st.warning(
-                    "El cierre es definitivo. Antes de cerrarlo, "
-                    "el sistema verificará que no haya rendiciones pendientes "
-                    "ni pedidos entregados sin rendición confirmada."
-                )
-
-                confirm_close = st.checkbox(
-                    "Confirmo que deseo cerrar definitivamente este turno."
-                )
-
-                close_submit = st.form_submit_button(
-                    "CERRAR TURNO DEFINITIVAMENTE",
-                    use_container_width=True,
-                    disabled=not confirm_close
-                )
-
-            if close_submit:
-                staff_token = st.session_state.get("staff_token", "")
-
-                if not staff_token:
-                    st.error("No hay una sesión activa de Caja. Ingresá nuevamente.")
-                else:
-                    close_result = api(
-                        "cashout_close_session",
-                        token=staff_token,
-                        ID_Sesion=selected_session.get("ID_Sesion")
-                    )
-
-                    if close_result:
-                        st.success(
-                            close_result.get(
-                                "message",
-                                "Turno cerrado definitivamente."
-                            )
-                        )
-                        st.rerun()
-        else:
-            st.info("No hay turnos de conductores activos para cerrar.")
-
+def sidebar(role: str) -> str:
+    menus = {
+        "ADMIN": [
+            "Resumen", "Caja y movimientos", "Cierres de caja", "Liquidaciones",
+            "Comisiones de operadores", "Operaciones por emprendedor", "Emprendedores",
+            "Conductores", "Operadores", "Motos", "Usuarios", "Historial"
+        ],
+        "EMPRENDEDOR": ["Inicio", "Enviar pedidos", "Recibir levantes", "Mis operaciones"],
+        "CONDUCTOR": ["Inicio", "Mi jornada", "Mis trabajos", "Mis ganancias", "Mi historial"],
+        "OPERADOR": [
+            "Inicio", "Panel operativo", "Trabajos y asignaciones", "Conductores y motos",
+            "Jornadas", "Incidencias", "Historial operativo"
+        ],
+    }
+    with st.sidebar:
+        st.markdown("## 🛵 OptiRuta")
+        st.caption(f"{ROLE_LABELS.get(role, role)}")
+        st.write(user_value("Nombre", "Nombre_Completo", "name", default="Usuario"))
         st.divider()
+        page = st.radio("Menú", menus.get(role, ["Inicio"]), key=f"menu_{role}")
+        st.divider()
+        if st.button("Cerrar sesión", use_container_width=True):
+            do_logout()
+    return page
 
-        st.subheader("Registrar transferencia recibida del emprendedor")
-        ems = rows("EMPRENDEDORES")
-        emmap = {f"{e.get('Nombre_Comercial')} ({e.get('ID_Emprendedor')})": e.get("ID_Emprendedor") for e in ems}
-        with st.form("transfer_in", enter_to_submit=False):
-            emlabel = st.selectbox("Emprendedor", list(emmap) or [""])
-            amount = st.number_input("Monto recibido (Gs.)", min_value=0, step=1000)
-            ref = st.text_input("Referencia / comprobante")
-            if st.form_submit_button("REGISTRAR TRANSFERENCIA"):
-                api("movement", record={"Tipo_Movimiento": "TRANSFERENCIA_ENVIO_RECIBIDA", "ID_Emprendedor": emmap.get(emlabel, ""), "Cuenta_Origen": "EMPRENDEDOR", "Cuenta_Destino": "OPTIRUTA", "Metodo_Pago": "Transferencia", "Monto": int(amount), "Estado": "Confirmado", "Referencia": ref, "Fecha_Hora": datetime.now().isoformat(timespec="seconds")})
+
+def floating_access() -> None:
+    st.markdown(
+        """
+        <div class="or-float">
+          <a href="#chat-optiruta">💬 Chat</a>
+          <a href="#alertas-optiruta">🔔 Alertas</a>
+          <a href="#ganancias-optiruta">💰 Ganancias</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def common_notifications() -> None:
+    with st.expander("🔔 Alertas y notificaciones", expanded=False):
+        st.markdown('<div id="alertas-optiruta"></div>', unsafe_allow_html=True)
+        ok, data = safe_api("notifications_list", only_unread=True)
+        if ok:
+            show_table(data, "No tenés alertas pendientes.")
+            if st.button("Marcar todas como leídas"):
+                safe_api("notifications_read_all")
                 st.rerun()
-        st.subheader("Historial de movimientos")
-        st.dataframe(df("MOVIMIENTOS"), use_container_width=True, hide_index=True)
-        st.subheader("Liquidaciones guardadas")
-        st.dataframe(df("LIQUIDACIONES"), use_container_width=True, hide_index=True)
-
-    elif section == "Ubicaciones":
-        st.subheader("Últimas ubicaciones de conductores")
-        loc = df("UBICACIONES")
-        if not loc.empty:
-            st.dataframe(loc.sort_values("Fecha_Hora", ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.info("Todavía no hay ubicaciones registradas.")
-
-    elif section == "Operadores":
-        st.subheader("Registro de operadores")
-        with st.form("operator_create", clear_on_submit=True):
-            name = st.text_input("Nombre completo")
-            phone = st.text_input("Teléfono")
-            notes = st.text_area("Observaciones")
-            if st.form_submit_button("REGISTRAR OPERADOR"):
-                if not name.strip():
-                    st.error("Ingresá el nombre del operador.")
-                else:
-                    saved = api("save", sheet="OPERADORES", record={"ID_Operador":"", "Nombre_Completo":name.strip(), "Telefono":phone.strip(), "Estado":"Activo", "Fecha_Ingreso":datetime.now().date().isoformat(), "Observaciones":notes.strip()})
-                    if saved:
-                        st.success("Operador registrado. ID: " + str(saved.get("id", "")))
-                        st.rerun()
-        operators = df("OPERADORES")
-        if not operators.empty:
-            st.dataframe(operators, use_container_width=True, hide_index=True)
-        else:
-            st.info("Todavía no hay operadores registrados.")
-        st.caption("Después de registrar la ficha, creá su acceso desde Usuarios y vinculalo con el ID_Operador.")
-
-    elif section == "Usuarios":
-        st.subheader("Crear acceso")
-        st.markdown("### 🔑 Datos del nuevo usuario")
-        with st.form("user_create"):
-            uname = st.text_input("Usuario nuevo")
-            pwd = st.text_input("Contraseña inicial", type="password")
-            urole = st.selectbox("Rol", ["EMPRENDEDOR", "CONDUCTOR", "OPERADOR"])
-            refid = st.text_input("ID de emprendedor, conductor u operador")
-            if st.form_submit_button("CREAR USUARIO"):
-                result = api("create_user", username=uname, password=pwd, role=urole, reference_id=refid)
-                if result:
-                    st.success("Usuario creado.")
-        st.info("Cada usuario debe estar vinculado a un registro activo de su rol. Para OPERADOR, primero cargá su ficha en la hoja OPERADORES.")
-
-
-# -------------------- EMPRENDEDOR --------------------
-elif role == "EMPRENDEDOR":
-    if "entrepreneur_view" not in st.session_state:
-        st.session_state.entrepreneur_view = None
-
-    if st.session_state.entrepreneur_view is None:
-        brand_header(show_tag=False)
-        st.title("¿En qué te puedo ayudar hoy?")
-        st.caption("Seleccioná el servicio que necesitás.")
-
-        st.markdown("""
-        <style>
-        div.st-key-btn_enviar button[kind="secondary"],
-        div.st-key-btn_levantar button[kind="secondary"],
-        div.st-key-btn_enviar button,
-        div.st-key-btn_levantar button {
-            min-height: 76px !important;
-            border-radius: 14px !important;
-        }
-
-        div.st-key-btn_enviar button {
-            background: #0750B8 !important;
-            border: 2px solid #0750B8 !important;
-        }
-
-        div.st-key-btn_levantar button {
-            background: #E9A817 !important;
-            border: 2px solid #E9A817 !important;
-        }
-
-        div.st-key-btn_enviar button p,
-        div.st-key-btn_levantar button p,
-        div.st-key-btn_enviar button span,
-        div.st-key-btn_levantar button span {
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-size: 21px !important;
-            font-weight: 800 !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        col_enviar, col_levantar = st.columns(2, gap="large")
-
-        with col_enviar:
-            if st.button("📦 ENVIAR", key="btn_enviar", use_container_width=True):
-                st.session_state.entrepreneur_view = "ENVIAR"
-                st.rerun()
-
-        with col_levantar:
-            if st.button("🛍️ RECIBIR", key="btn_levantar", use_container_width=True):
-                st.session_state.entrepreneur_view = "LEVANTAR"
-                st.rerun()
-
-        st.stop()
-
-    if st.session_state.entrepreneur_view == "LEVANTAR":
-        brand_header(show_tag=False)
-        st.title("Solicitar un SOBRE o una COMPRA")
-        st.caption("Completá los datos del proveedor y el lugar donde querés recibir tu compra.")
-
-        st.markdown(
-            """
-            <div style="
-                background-color: #EAF2FF;
-                color: #17365D;
-                padding: 14px 18px;
-                border-radius: 10px;
-                border: 1px solid #B8D0F0;
-                font-weight: 600;
-                margin-bottom: 15px;
-            ">
-                El servicio puede incluir varios trámites, como prioridad del levante, espera en filas, gestión de pagos, verificación de compra y certeza de compra.<br> 
-                Su costo base es de Gs. 20.000.
-            </div>
-            """,
-            unsafe_allow_html=True
+    with st.expander("💬 Chat interno", expanded=False):
+        st.markdown('<div id="chat-optiruta"></div>', unsafe_allow_html=True)
+        st.info(
+            "Espacio preparado para el chat interno. Para habilitar mensajes en tiempo real, "
+            "el dispatcher de Apps Script debe implementar las acciones de chat."
         )
 
-        errores_recibir = st.session_state.get("errores_recibir", [])
 
-        def etiqueta_recibir(texto, campo):
-            if campo in errores_recibir:
-                return "🔴 " + texto
-            return texto
-
-        st.markdown("### 1. Datos del proveedor")
-        with st.form("entrepreneur_levante_form", enter_to_submit=False):
-            supplier = st.text_input(
-                etiqueta_recibir("Nombre del proveedor *", "supplier"),
-                placeholder="Nombre del local o proveedor"
-            )
-
-            supplier_phone = st.text_input(
-                "Teléfono del proveedor",
-                placeholder="Número de contacto"
-            )
-
-            origin_address = st.text_input(
-                etiqueta_recibir("Dirección del retiro *", "origin_address"),
-                placeholder="Dirección donde OptiRuta debe retirar la compra"
-            )
-
-            origin_maps = st.text_input(
-                etiqueta_recibir("Ubicación de Google Maps del proveedor *", "origin_maps"),
-                placeholder="Pegá el enlace de ubicación compartida"
-            )
-
-            origin_reference = st.text_input(
-                "Referencia del lugar de retiro",
-                placeholder="Ej.: local frente a la plaza"
-            )
-
-            st.divider()
-            st.markdown("### 2. Lugar donde querés recibir la compra")
-
-            destination_address = st.text_input(
-                etiqueta_recibir("Dirección de destino *", "destination_address"),
-                placeholder="Dirección donde querés recibir tu mercadería"
-            )
-
-            destination_maps = st.text_input(
-                etiqueta_recibir("Ubicación de Google Maps del destino *", "destination_maps"),
-                placeholder="Pegá el enlace de ubicación compartida"
-            )
-
-            destination_reference = st.text_input(
-                "Referencia del destino",
-                placeholder="Ej.: portón negro, casa de esquina"
-            )
-
-            st.divider()
-            st.markdown("### 3. Datos para identificar la compra")
-
-            reference_number = st.text_input(
-                "Número de referencia",
-                placeholder="Número de pedido o comprobante del proveedor"
-            )
-
-            requested_name = st.text_input(
-                etiqueta_recibir("Nombre a nombre de quién se solicita *", "requested_name"),
-                placeholder="Nombre que el proveedor debe reconocer"
-            )
-
-            merchandise_description = st.text_area(
-                "Descripción de la mercadería",
-                placeholder="Descripción breve de lo que se debe retirar",
-                height=80
-            )
-
-            priority = st.selectbox(
-                "Prioridad",
-                ["Normal", "Urgente"]
-            )
-
-            submitted_levante = st.form_submit_button(
-                "ENVIAR SOLICITUD",
-                use_container_width=True
-            )
-
-
-        def error_recibir(mensaje):
-            st.markdown(
-                f"""
-                <div style="
-                    background-color: #FDE8E8;
-                    color: #991B1B;
-                    padding: 12px 16px;
-                    border-radius: 8px;
-                    border: 1px solid #F5B5B5;
-                    font-weight: 600;
-                    margin: 8px 0;
-                ">
-                    {mensaje}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        mensajes_recibir = {
-            "supplier": "Ingresá el nombre del proveedor.",
-            "origin_address": "Completá la dirección de retiro.",
-            "origin_maps": "La ubicación del proveedor está vacía o no es un enlace válido de Google Maps.",
-            "destination_address": "Completá la dirección de destino.",
-            "destination_maps": "La ubicación del destino está vacía o no es un enlace válido de Google Maps.",
-            "requested_name": "Ingresá el nombre solicitado."
-        }
-
-        if submitted_levante:
-            errores = []
-
-            if not supplier.strip():
-                errores.append("supplier")
-
-            if not origin_address.strip():
-                errores.append("origin_address")
-
-            if not origin_maps.strip():
-                errores.append("origin_maps")
-            elif not es_enlace_google_maps(origin_maps):
-                errores.append("origin_maps")
-
-            if not destination_address.strip():
-                errores.append("destination_address")
-
-            if not destination_maps.strip():
-                errores.append("destination_maps")
-            elif not es_enlace_google_maps(destination_maps):
-                errores.append("destination_maps")
-
-            if not requested_name.strip():
-                errores.append("requested_name")
-
-            st.session_state["errores_recibir"] = errores
-
-            if errores:
-                st.rerun()
-
-            else:
-                record = {
-                    "ID_Levante": "",
-                    "ID_Emprendedor": uid,
-                    "Nombre_Proveedor": supplier.strip(),
-                    "Telefono_Proveedor": supplier_phone.strip(),
-                    "Direccion_Origen": origin_address.strip(),
-                    "Ubicacion_Origen_Google_Maps": origin_maps.strip(),
-                    "Latitud_Origen": "",
-                    "Longitud_Origen": "",
-                    "Referencia_Origen": origin_reference.strip(),
-                    "Direccion_Destino": destination_address.strip(),
-                    "Ubicacion_Destino_Google_Maps": destination_maps.strip(),
-                    "Latitud_Destino": "",
-                    "Longitud_Destino": "",
-                    "Referencia_Destino": destination_reference.strip(),
-                    "Numero_Referencia": reference_number.strip(),
-                    "Nombre_Solicitado": requested_name.strip(),
-                    "Descripcion_Mercaderia": merchandise_description.strip(),
-                    "Prioridad": priority,
-                    "Observaciones": ""
-                }
-
-                save("LEVANTES", record)
-
-        for campo in st.session_state.get("errores_recibir", []):
-            error_recibir(mensajes_recibir[campo])
-
-        st.divider()
-        st.subheader("Mis solicitudes de RECIBIR")
-
-        levantes = df("LEVANTES")
-
-        if not levantes.empty:
-            if "ID_Emprendedor" in levantes.columns:
-                levantes = levantes[
-                    levantes["ID_Emprendedor"].astype(str) == str(uid)
-                ].copy()
-
-            if not levantes.empty:
-                visible_columns = [
-                    "ID_Levante",
-                    "Fecha_Solicitud",
-                    "Nombre_Proveedor",
-                    "Direccion_Origen",
-                    "Direccion_Destino",
-                    "Monto_Total",
-                    "Estado_Levante"
-                ]
-
-                visible_columns = [
-                    col for col in visible_columns
-                    if col in levantes.columns
-                ]
-
-            if not levantes.empty:
-                visible_columns = [
-                    "ID_Levante",
-                    "Fecha_Solicitud",
-                    "Nombre_Proveedor",
-                    "Direccion_Origen",
-                    "Direccion_Destino",
-                    "Monto_Total",
-                    "Estado_Levante"
-                ]
-
-                visible_columns = [
-                    col for col in visible_columns
-                    if col in levantes.columns
-                ]
-
-                tabla_levantes = (
-                    levantes[visible_columns]
-                    .style
-                    .set_properties(**{
-                        "background-color": "#FFFFFF",
-                        "color": "#17365D",
-                        "border-color": "#B8D0F0"
-                    })
-                    .set_table_styles([
-                        {
-                            "selector": "th",
-                            "props": [
-                                ("background-color", "#0750B8"),
-                                ("color", "#FFFFFF"),
-                                ("font-weight", "bold")
-                            ]
-                        }
-                    ])
-                )
-
-                st.dataframe(
-                    tabla_levantes,
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            
-            else:
-                st.markdown(
-                    """
-                    <div style="
-                        background-color: #EAF2FF;
-                        color: #17365D;
-                        padding: 14px 18px;
-                        border-radius: 10px;
-                        border: 1px solid #B8D0F0;
-                        font-weight: 600;
-                    ">
-                        Todavía no tenés solicitudes de RECIBIR.
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-        else:
-            st.markdown(
-                """
-                <div style="
-                    background-color: #EAF2FF;
-                    color: #17365D;
-                    padding: 14px 18px;
-                    border-radius: 10px;
-                    border: 1px solid #B8D0F0;
-                    font-weight: 600;
-                ">
-                    Todavía no tenés solicitudes de RECIBIR.
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        st.divider()
-
-        if st.button("← VOLVER", use_container_width=True):
-            st.session_state.entrepreneur_view = None
-            st.rerun()
-
-        st.stop()
-
-    if st.session_state.entrepreneur_view == "ENVIAR":
-        brand_header("Portal privado del emprendedor · Moneda: PYG")
-        st.caption("Usá Tab para pasar al siguiente campo. En descripción e instrucciones podés presionar Enter para escribir otro renglón.")
-        st.title("Cargar un pedido")
-        st.markdown("### 📦 Información del pedido")
-
-        buscar_cliente("entrepreneur_order")
-
-        with st.form("entrepreneur_order", enter_to_submit=False):
-            customer = st.text_input("Nombre del cliente", key="entrepreneur_order_customer_name")
-            phone = st.text_input("Teléfono", key="entrepreneur_order_customer_phone")
-            address = st.text_input("Dirección de entrega", key="entrepreneur_order_customer_address")
-
-            maps_location = st.text_input(
-                "Ubicación de Google Maps (pegá el enlace compartido)",
-                placeholder="https://maps.app.goo.gl/...",
-                key="entrepreneur_order_customer_maps"
-            )
-
-            st.caption("En Google Maps: abrí la ubicación del cliente, tocá Compartir y copiá el enlace.")
-
-            description = st.text_area("Descripción del pedido", height=90)
-            priority = st.selectbox(
-                "Prioridad del pedido",
-                ["Normal", "Alta", "Urgente"],
-                help="Urgente solo para pedidos que realmente requieren atención inmediata."
-            )
-
-            a, b, c = st.columns(3)
-            product = a.number_input("Costo del producto (Gs.)", min_value=0, step=1000)
-            shipping = b.number_input("Costo del envío (Gs.)", min_value=0, step=1000)
-            prepaid = c.number_input("Anticipo recibido (Gs.)", min_value=0, step=1000)
-
-            method = st.selectbox(
-                "Método de pago acordado por WhatsApp",
-                [
-                    "Efectivo al recibir",
-                    "Transferencia al emprendedor",
-                    "Efectivo + transferencia",
-                    "Pagado adelantado"
-                ]
-            )
-
-            if method == "Efectivo + transferencia":
-                transfer_amount = st.number_input(
-                    "Monto que el cliente transferirá al emprendedor (Gs.)",
-                    min_value=0,
-                    step=1000
-                )
-            elif method in ["Transferencia al emprendedor", "Pagado adelantado"]:
-                transfer_amount = int(product + shipping)
-            else:
-                transfer_amount = 0
-
-            if transfer_amount > 0:
-                transfer_status = st.selectbox(
-                    "Estado de la transferencia",
-                    ["Pendiente de confirmar", "Acreditada al emprendedor"],
-                    help="Marcá acreditada únicamente después de verificar el ingreso en la cuenta."
-                )
-            else:
-                transfer_status = "No corresponde"
-
-            payment_note = st.text_area(
-                "Instrucciones / acuerdo conversado por WhatsApp",
-                height=75,
-                placeholder="Ej.: el cliente ya transfirió Gs. 20.000 al emprendedor; el resto se cobra en efectivo."
-            )
-
-            st.caption("El conductor no contactará al cliente. Dejá asentado el acuerdo. Solo marcá la transferencia como acreditada cuando ya verificaste el dinero.")
-
-            if st.form_submit_button("ENVIAR PEDIDO", use_container_width=True):
-                total = int(product + shipping)
-
-                record = {
-                    "ID_Pedido": "",
-                    "Fecha_Carga": datetime.now().isoformat(timespec="seconds"),
-                    "ID_Emprendedor": uid,
-                    "Nombre_Cliente": customer,
-                    "Telefono_Cliente": phone,
-                    "Direccion_Entrega": address,
-                    "Ubicacion_Google_Maps": maps_location.strip(),
-                    "Descripcion_Pedido": description,
-                    "Prioridad": priority,
-                    "Costo_Producto": int(product),
-                    "Costo_Envio": int(shipping),
-                    "Total_Cobrar": total,
-                    "Metodo_Pago": method,
-                    "Monto_Anticipado": int(prepaid),
-                    "Monto_Efectivo_Cobrado": 0,
-                    "Monto_Transferencia_Adicional": int(transfer_amount),
-                    "Instrucciones_Pago": payment_note,
-                    "Estado_Transferencia_Cliente": transfer_status,
-                    "ID_Conductor": "",
-                    "ID_Moto": "",
-                    "Estado_Reparto": "Pendiente",
-                    "Fecha_Entrega": "",
-                    "Estado_Liquidacion": "Pendiente",
-                    "Estado_Registro": "Activo",
-                    "Observaciones": ""
-                }
-
-                if customer and address:
-                    guardar_pedido_seguro(record)
-                else:
-                    st.error("Completá el nombre y la dirección.")
-
-        st.divider()
-        st.subheader("Mis pedidos")
-
-        data = df("PEDIDOS")
-
-        if not data.empty and "ID_Emprendedor" in data.columns:
-            mine = data[data["ID_Emprendedor"].astype(str) == str(uid)].copy()
-
-            if "Estado_Registro" in mine.columns:
-                mine = mine[mine["Estado_Registro"].astype(str) != "Eliminado"]
-
-            st.dataframe(mine, use_container_width=True, hide_index=True)
-
-            if not mine.empty and "ID_Pedido" in mine.columns:
-                st.markdown("### ✏️ Modificar un pedido")
-                st.caption("Podés corregir los datos de tus pedidos que todavía no fueron entregados ni rendidos.")
-
-                order_ids = mine["ID_Pedido"].astype(str).tolist()
-
-                selected_order_id = st.selectbox(
-                    "Elegí el pedido que querés modificar",
-                    order_ids,
-                    key="entrepreneur_edit_order_id"
-                )
-
-                selected_rows = mine[
-                    mine["ID_Pedido"].astype(str) == str(selected_order_id)
-                ]
-
-                if not selected_rows.empty:
-                    original = selected_rows.iloc[0].to_dict()
-
-                    order_state = str(
-                        original.get("Estado_Reparto", "Pendiente") or "Pendiente"
-                    )
-
-                    settlement_state = str(
-                        original.get("Estado_Liquidacion", "Pendiente") or "Pendiente"
-                    )
-
-                    can_edit = (
-                        order_state not in ["Entregado", "Cancelado"]
-                        and settlement_state != "Rendido"
-                    )
-
-                    if not can_edit:
-                        st.warning(
-                            "Este pedido ya fue entregado, cancelado o rendido, "
-                            "por lo que no se puede modificar desde este portal. "
-                            "Si necesitás corregirlo, contactá a administración."
-                        )
-                    else:
-                        def edit_text(value):
-                            return "" if pd.isna(value) else str(value)
-
-                        def edit_number(value):
-                            try:
-                                return max(0, int(float(value or 0)))
-                            except (TypeError, ValueError):
-                                return 0
-
-                        with st.form(
-                            "entrepreneur_edit_order_form",
-                            enter_to_submit=False
-                        ):
-                            edit_customer = st.text_input(
-                                "Nombre del cliente",
-                                value=edit_text(original.get("Nombre_Cliente")),
-                                key="edit_customer"
-                            )
-
-                            edit_phone = st.text_input(
-                                "Teléfono",
-                                value=edit_text(original.get("Telefono_Cliente")),
-                                key="edit_phone"
-                            )
-
-                            edit_address = st.text_input(
-                                "Dirección de entrega",
-                                value=edit_text(original.get("Direccion_Entrega")),
-                                key="edit_address"
-                            )
-
-                            edit_map = st.text_input(
-                                "Ubicación de Google Maps",
-                                value=edit_text(original.get("Ubicacion_Google_Maps")),
-                                key="edit_map"
-                            )
-
-                            edit_description = st.text_area(
-                                "Descripción del pedido",
-                                value=edit_text(original.get("Descripcion_Pedido")),
-                                height=90,
-                                key="edit_description"
-                            )
-
-                            priorities = ["Normal", "Alta", "Urgente"]
-                            old_priority = edit_text(
-                                original.get("Prioridad", "Normal")
-                            )
-
-                            edit_priority = st.selectbox(
-                                "Prioridad",
-                                priorities,
-                                index=priorities.index(old_priority)
-                                if old_priority in priorities else 0,
-                                key="edit_priority"
-                            )
-
-                            ea, eb, ec = st.columns(3)
-
-                            edit_product = ea.number_input(
-                                "Costo del producto (Gs.)",
-                                min_value=0,
-                                step=1000,
-                                value=edit_number(original.get("Costo_Producto")),
-                                key="edit_product"
-                            )
-
-                            edit_shipping = eb.number_input(
-                                "Costo del envío (Gs.)",
-                                min_value=0,
-                                step=1000,
-                                value=edit_number(original.get("Costo_Envio")),
-                                key="edit_shipping"
-                            )
-
-                            edit_prepaid = ec.number_input(
-                                "Anticipo recibido (Gs.)",
-                                min_value=0,
-                                step=1000,
-                                value=edit_number(original.get("Monto_Anticipado")),
-                                key="edit_prepaid"
-                            )
-
-                            payment_methods = [
-                                "Efectivo al recibir",
-                                "Transferencia al emprendedor",
-                                "Efectivo + transferencia",
-                                "Pagado adelantado"
-                            ]
-
-                            old_method = edit_text(
-                                original.get("Metodo_Pago", "Efectivo al recibir")
-                            )
-
-                            edit_method = st.selectbox(
-                                "Método de pago acordado",
-                                payment_methods,
-                                index=payment_methods.index(old_method)
-                                if old_method in payment_methods else 0,
-                                key="edit_method"
-                            )
-
-                            old_transfer = edit_number(
-                                original.get("Monto_Transferencia_Adicional")
-                            )
-
-                            if edit_method == "Efectivo + transferencia":
-                                edit_transfer = st.number_input(
-                                    "Monto que el cliente transferirá al emprendedor (Gs.)",
-                                    min_value=0,
-                                    step=1000,
-                                    value=old_transfer,
-                                    key="edit_transfer"
-                                )
-                            elif edit_method in [
-                                "Transferencia al emprendedor",
-                                "Pagado adelantado"
-                            ]:
-                                edit_transfer = int(edit_product + edit_shipping)
-                                st.caption("La transferencia se calcula con el total del pedido.")
-                            else:
-                                edit_transfer = 0
-
-                            transfer_states = [
-                                "No corresponde",
-                                "Pendiente de confirmar",
-                                "Acreditada al emprendedor"
-                            ]
-
-                            old_transfer_state = edit_text(
-                                original.get("Estado_Transferencia_Cliente", "No corresponde")
-                            )
-
-                            default_transfer_state = (
-                                old_transfer_state
-                                if old_transfer_state in transfer_states
-                                else (
-                                    "Pendiente de confirmar"
-                                    if edit_transfer > 0
-                                    else "No corresponde"
-                                )
-                            )
-
-                            edit_transfer_state = st.selectbox(
-                                "Estado de la transferencia",
-                                transfer_states,
-                                index=transfer_states.index(default_transfer_state),
-                                key="edit_transfer_state"
-                            )
-
-                            edit_payment_note = st.text_area(
-                                "Instrucciones / acuerdo de pago",
-                                value=edit_text(original.get("Instrucciones_Pago")),
-                                height=75,
-                                key="edit_payment_note"
-                            )
-
-                            update_order = st.form_submit_button(
-                                "GUARDAR CAMBIOS DEL PEDIDO",
-                                use_container_width=True
-                            )
-
-                        if update_order:
-                            if not edit_customer.strip() or not edit_address.strip():
-                                st.error(
-                                    "Completá el nombre del cliente y la dirección de entrega."
-                                )
-                            else:
-                                updated = dict(original)
-
-                                updated.update({
-                                    "Nombre_Cliente": edit_customer.strip(),
-                                    "Telefono_Cliente": edit_phone.strip(),
-                                    "Direccion_Entrega": edit_address.strip(),
-                                    "Ubicacion_Google_Maps": edit_map.strip(),
-                                    "Descripcion_Pedido": edit_description,
-                                    "Prioridad": edit_priority,
-                                    "Costo_Producto": int(edit_product),
-                                    "Costo_Envio": int(edit_shipping),
-                                    "Total_Cobrar": int(edit_product + edit_shipping),
-                                    "Monto_Anticipado": int(edit_prepaid),
-                                    "Metodo_Pago": edit_method,
-                                    "Monto_Transferencia_Adicional": int(edit_transfer),
-                                    "Estado_Transferencia_Cliente": (
-                                        edit_transfer_state
-                                        if edit_transfer > 0
-                                        else "No corresponde"
-                                    ),
-                                    "Instrucciones_Pago": edit_payment_note,
-                                })
-
-                                save("PEDIDOS", updated)
-
-        else:
-            st.info("Todavía no tenés pedidos registrados.")
-
-        st.divider()
-
-        if st.button("← VOLVER A ENVIAR / LEVANTAR", use_container_width=True):
-            st.session_state.entrepreneur_view = None
-            st.rerun()
-
-# -------------------- CONDUCTOR --------------------
-elif role == "CONDUCTOR":
-    brand_header("Aplicación de trabajo del conductor · Moneda: PYG")
-    st.title("Mis entregas")
-    st.caption("Pantalla clara de alto contraste para facilitar la lectura bajo el sol.")
-
-    # Solicitar ubicación del teléfono. El navegador debe tener permiso GPS.
-    gps = None
-    try:
-        gps = streamlit_geolocation()
-    except Exception:
-        gps = None
-
-    current_lat = gps.get("latitude") if isinstance(gps, dict) else None
-    current_lon = gps.get("longitude") if isinstance(gps, dict) else None
-    gps_ok = current_lat is not None and current_lon is not None
-
-    left, right = st.columns([2, 1])
-    with left:
-        if gps_ok:
-            st.success("GPS disponible · ubicación recibida")
-        else:
-            st.warning("GPS no disponible. Permití la ubicación del teléfono para ordenar los pedidos por cercanía.")
-    with right:
-        if st.button("ACTUALIZAR PEDIDOS", use_container_width=True):
-            st.rerun()
-
-    if gps_ok and st.button("COMPARTIR MI UBICACIÓN CON OPTIRUTA", use_container_width=True):
-        loc_result = api("location", record={
-            "ID_Conductor": uid, "ID_Moto": "",
-            "Fecha_Hora": datetime.now().isoformat(timespec="seconds"),
-            "Latitud": current_lat, "Longitud": current_lon,
-            "Precision": gps.get("accuracy", ""), "Estado_GPS": "Activo"
-        })
-        if loc_result:
-            st.success("Ubicación compartida con administración.")
-
-    data = df("PEDIDOS")
-    if data.empty or "ID_Conductor" not in data.columns:
-        st.info("Todavía no tenés pedidos asignados.")
+# ---------------------------------------------------------------------------
+# ADMIN
+# ---------------------------------------------------------------------------
+
+def admin_dashboard() -> None:
+    brand_header("Panel administrativo · Finanzas y control")
+    pedidos = df("PEDIDOS")
+    conductores = df("CONDUCTORES")
+    emprendedores = df("EMPRENDEDORES")
+    levantes = df("LEVANTES")
+    metric_row([
+        ("Pedidos registrados", len(pedidos)),
+        ("Levantes registrados", len(levantes)),
+        ("Conductores", len(conductores)),
+        ("Emprendedores", len(emprendedores)),
+    ])
+    st.subheader("Actividad reciente")
+    if not pedidos.empty:
+        st.dataframe(pedidos.tail(10), use_container_width=True, hide_index=True)
     else:
-        active_states = ["Pendiente", "Retirado", "En ruta"]
-        mine = data[
-            (data["ID_Conductor"].astype(str) == str(uid)) &
-            (data["Estado_Reparto"].astype(str).isin(active_states))
-        ].copy()
+        st.info("Todavía no hay pedidos registrados.")
 
-        if mine.empty:
-            st.success("No tenés entregas pendientes. ¡Buen trabajo!")
+
+def admin_cash() -> None:
+    brand_header("Caja y movimientos")
+    tabs = st.tabs(["Movimientos", "Registrar movimiento", "Cierres pendientes"])
+    with tabs[0]:
+        show_table(df("MOVIMIENTOS"))
+    with tabs[1]:
+        with st.form("admin_movement"):
+            movement_type = st.selectbox(
+                "Tipo de movimiento",
+                ["TRANSFERENCIA_EMPRENDEDOR", "AJUSTE", "OTRO"]
+            )
+            entrepreneur_id = st.text_input("ID del emprendedor (si corresponde)")
+            driver_id = st.text_input("ID del conductor (si corresponde)")
+            amount = st.number_input("Monto (Gs.)", min_value=0, step=1000)
+            method = st.selectbox("Método", ["TRANSFERENCIA", "EFECTIVO", "MIXTO"])
+            reference = st.text_input("Referencia")
+            notes = st.text_area("Observaciones")
+            submit = st.form_submit_button("Registrar movimiento", type="primary")
+        if submit:
+            record = {
+                "Tipo_Movimiento": movement_type,
+                "ID_Emprendedor": entrepreneur_id,
+                "ID_Conductor": driver_id,
+                "Monto": amount,
+                "Metodo_Pago": method,
+                "Referencia": reference,
+                "Observaciones": notes,
+            }
+            safe_api("movement", record=record)
+    with tabs[2]:
+        ok, result = safe_api("cashout_pending")
+        if ok:
+            show_table(result, "No hay cierres pendientes.")
+        st.caption("La confirmación física y el cierre definitivo son funciones exclusivas de ADMIN.")
+
+
+def admin_closures() -> None:
+    brand_header("Cierres de caja")
+    ok, pending = safe_api("cashout_pending")
+    if ok:
+        show_table(pending, "No hay cierres pendientes de verificación.")
+    st.divider()
+    st.subheader("Confirmar recepción")
+    with st.form("confirm_cashout"):
+        close_id = st.text_input("ID_Cierre_Caja")
+        received = st.number_input("Efectivo recibido (Gs.)", min_value=0, step=1000)
+        notes = st.text_area("Observaciones del cajero")
+        submit = st.form_submit_button("Confirmar recepción", type="primary")
+    if submit:
+        safe_api(
+            "cashout_confirm",
+            ID_Cierre_Caja=close_id,
+            efectivo_recibido=received,
+            observaciones=notes,
+        )
+
+
+def admin_liquidations() -> None:
+    brand_header("Liquidaciones")
+    ok, result = safe_api("admin_liquidations_list")
+    if ok:
+        show_table(result, "No hay liquidaciones registradas.")
+    st.divider()
+    st.subheader("Crear borrador")
+    with st.form("create_liquidation"):
+        kind = st.selectbox("Tipo", ["CONDUCTOR", "EMPRENDEDOR"])
+        driver = st.text_input("ID del conductor")
+        entrepreneur = st.text_input("ID del emprendedor")
+        closure = st.text_input("ID del cierre de caja")
+        notes = st.text_area("Observaciones")
+        submit = st.form_submit_button("Crear borrador")
+    if submit:
+        safe_api(
+            "admin_liquidation_create",
+            data={
+                "Tipo_Liquidacion": kind,
+                "ID_Conductor": driver,
+                "ID_Emprendedor": entrepreneur,
+                "ID_Cierre_Caja": closure,
+                "Observaciones": notes,
+            },
+        )
+    st.warning(
+        "El backend debe calcular los importes desde los registros reales; "
+        "no se permiten importes financieros definidos por el navegador."
+    )
+
+
+def admin_commissions() -> None:
+    brand_header("Comisiones de operadores")
+    ok, result = safe_api("admin_operator_commissions")
+    if ok:
+        show_table(result, "No hay comisiones generadas.")
+    with st.form("commission_action"):
+        commission_id = st.text_input("ID_Comision")
+        action = st.selectbox("Acción", ["Autorizar", "Registrar pago"])
+        notes = st.text_area("Observaciones")
+        submit = st.form_submit_button("Ejecutar acción", type="primary")
+    if submit:
+        if action == "Autorizar":
+            safe_api("admin_operator_commission_authorize", commission_id=commission_id, observations=notes)
         else:
-            mine["Distancia_km"] = None
-            if gps_ok and "Latitud_Entrega" in mine.columns and "Longitud_Entrega" in mine.columns:
-                def calc_distance(row):
-                    try:
-                        if pd.notna(row.get("Latitud_Entrega")) and pd.notna(row.get("Longitud_Entrega")):
-                            return distance_km(current_lat, current_lon, row.get("Latitud_Entrega"), row.get("Longitud_Entrega"))
-                    except Exception:
-                        pass
-                    return float("inf")
-                mine["Distancia_km"] = mine.apply(calc_distance, axis=1)
-                mine = mine.sort_values("Distancia_km", ascending=True, na_position="last")
-                st.info("Los pedidos con coordenadas guardadas se ordenan por distancia en línea recta. Para una ruta real, abrí la navegación GPS.")
-            else:
-                mine = mine.sort_values("Fecha_Carga", ascending=True) if "Fecha_Carga" in mine.columns else mine
-                st.info("Mostrando pedidos asignados. Para ordenar por cercanía real, necesitamos guardar coordenadas GPS de cada dirección.")
+            safe_api("admin_operator_commission_pay", commission_id=commission_id, observations=notes)
 
-            st.metric("Entregas pendientes", len(mine))
-            for position, (_, order) in enumerate(mine.iterrows(), start=1):
-                order_id = order.get("ID_Pedido", "-")
-                address = order.get("Direccion_Entrega", "Dirección no cargada")
-                amount = order.get("Total_Cobrar", 0)
-                state = order.get("Estado_Reparto", "Pendiente")
-                with st.container(border=True):
-                    st.subheader(f"#{position} · PEDIDO {order_id}")
-                    st.write(f"**Destino:** {address}")
-                    st.write(f"**Monto a cobrar:** {money(amount)}")
-                    st.write(f"**Estado:** {state}")
-                    priority_value = str(order.get("Prioridad", "Normal") or "Normal")
-                    if priority_value == "Urgente":
-                        st.error("PRIORIDAD URGENTE")
-                    elif priority_value == "Alta":
-                        st.warning("PRIORIDAD ALTA")
-                    if gps_ok and pd.notna(order.get("Distancia_km")) and math.isfinite(float(order.get("Distancia_km"))):
-                        st.write(f"**Distancia aproximada:** {float(order.get('Distancia_km')):.1f} km")
-                    saved_map_link = str(order.get("Ubicacion_Google_Maps", "") or "").strip()
-                    navigation_url = saved_map_link if saved_map_link.startswith(("https://", "http://")) else maps_url(address)
-                    st.link_button("ABRIR NAVEGACIÓN GPS", navigation_url, use_container_width=True)
-                    if st.button("CONFIRMAR ENTREGA", key=f"del_{order_id}", use_container_width=True):
-                        rec = order.drop(labels=["Distancia_km"], errors="ignore").to_dict()
-                        rec["Estado_Reparto"] = "Entregado"
-                        rec["Fecha_Entrega"] = datetime.now().isoformat(timespec="seconds")
-                        rec["Estado_Liquidacion"] = "Pendiente"
-                        save("PEDIDOS", rec)
 
-elif role == "OPERADOR":
-    brand_header("Panel de operador · Coordinación de pedidos y levantes")
-    st.caption("Tomá trabajos de la cola compartida. Máximo inicial: 3 trabajos activos.")
-    result = api("operator_queue")
-    if result:
+def admin_entrepreneur_operations() -> None:
+    brand_header("Operaciones por emprendedor")
+    with st.form("entrepreneur_daily_ops"):
+        entrepreneur_id = st.text_input("ID del emprendedor")
+        start = st.date_input("Desde", value=date.today())
+        end = st.date_input("Hasta", value=date.today())
+        submit = st.form_submit_button("Consultar")
+    if submit:
+        ok, result = safe_api(
+            "admin_entrepreneur_daily_operations",
+            ID_Emprendedor=entrepreneur_id,
+            fecha_desde=start.isoformat(),
+            fecha_hasta=end.isoformat(),
+        )
+        if ok:
+            show_table(result, "No hay operaciones en ese período.")
+
+
+def admin_master_data(section: str, sheet: str, fields: list[tuple[str, str]]) -> None:
+    brand_header(section)
+    with st.form(f"create_{sheet.lower()}"):
+        values = {}
+        for key, label in fields:
+            values[key] = st.text_input(label)
+        submit = st.form_submit_button(f"Registrar {section.lower()}", type="primary")
+    if submit:
+        record = dict(values)
+        record.setdefault("ID", str(uuid.uuid4()))
+        safe_api("save", sheet=sheet, record=record)
+    show_table(df(sheet))
+
+
+def admin_users() -> None:
+    brand_header("Usuarios y accesos")
+    with st.form("create_user"):
+        username = st.text_input("Nombre de usuario")
+        password = st.text_input("Contraseña temporal", type="password")
+        role = st.selectbox("Perfil", ["EMPRENDEDOR", "CONDUCTOR", "OPERADOR"])
+        reference = st.text_input("ID vinculado (emprendedor, conductor u operador)")
+        submit = st.form_submit_button("Crear acceso", type="primary")
+    if submit:
+        safe_api(
+            "create_user", username=username, password=password,
+            role=role, reference_id=reference
+        )
+    show_table(df("USUARIOS"))
+
+
+def admin_history() -> None:
+    brand_header("Historial y auditoría")
+    ok, result = safe_api("history_list")
+    if ok:
+        show_table(result, "No hay eventos de historial disponibles.")
+    st.caption("El historial debe registrar actor, rol, fecha, módulo, acción y referencia.")
+
+
+def render_admin(page: str) -> None:
+    if page == "Resumen":
+        admin_dashboard()
+    elif page == "Caja y movimientos":
+        admin_cash()
+    elif page == "Cierres de caja":
+        admin_closures()
+    elif page == "Liquidaciones":
+        admin_liquidations()
+    elif page == "Comisiones de operadores":
+        admin_commissions()
+    elif page == "Operaciones por emprendedor":
+        admin_entrepreneur_operations()
+    elif page == "Emprendedores":
+        admin_master_data("Emprendedores", "EMPRENDEDORES", [
+            ("Nombre", "Nombre del emprendedor"), ("Telefono", "Teléfono"),
+            ("Direccion", "Dirección"),
+        ])
+    elif page == "Conductores":
+        admin_master_data("Conductores", "CONDUCTORES", [
+            ("CI", "Cédula de identidad (CI)"), ("Nombre_Completo", "Nombre completo"),
+            ("Telefono", "Teléfono"),
+        ])
+        st.info("La CI debe ser única e inmutable. Para un reingreso se reactiva el mismo registro.")
+    elif page == "Operadores":
+        admin_master_data("Operadores", "OPERADORES", [
+            ("Nombre", "Nombre del operador"), ("Telefono", "Teléfono"),
+        ])
+    elif page == "Motos":
+        admin_master_data("Motos", "MOTOS", [
+            ("Descripcion", "Descripción"), ("Patente", "Patente"),
+            ("Propiedad", "Propiedad"), ("Propietario", "Propietario"),
+        ])
+    elif page == "Usuarios":
+        admin_users()
+    elif page == "Historial":
+        admin_history()
+
+
+# ---------------------------------------------------------------------------
+# EMPRENDEDOR
+# ---------------------------------------------------------------------------
+
+def entrepreneur_home() -> None:
+    brand_header("Portal del emprendedor")
+    st.markdown("## ¿En qué te puedo ayudar hoy?")
+    a, b = st.columns(2)
+    with a:
+        if st.button("📦 ENVIAR · Crear pedido", type="primary", use_container_width=True):
+            st.session_state["entrepreneur_action"] = "Enviar pedidos"
+            st.rerun()
+    with b:
+        if st.button("🛍️ RECIBIR · Solicitar levante", type="primary", use_container_width=True):
+            st.session_state["entrepreneur_action"] = "Recibir levantes"
+            st.rerun()
+
+
+def entrepreneur_order() -> None:
+    brand_header("Enviar un pedido")
+    with st.form("entrepreneur_order_form"):
+        customer = st.text_input("Nombre del cliente")
+        phone = st.text_input("Teléfono del cliente")
+        address = st.text_input("Dirección de entrega")
+        maps = st.text_input("Ubicación de Google Maps (enlace)")
+        description = st.text_area("Descripción del pedido")
+        priority = st.selectbox("Prioridad", ["Normal", "Urgente"])
+        product_amount = st.number_input("Costo del producto (Gs.)", min_value=0, step=1000)
+        shipping = st.number_input("Costo de envío (Gs.)", min_value=0, step=1000, value=15000)
+        advance = st.number_input("Monto anticipado (Gs.)", min_value=0, step=1000)
+        payment = st.selectbox(
+            "Forma de pago",
+            ["Efectivo al recibir", "Transferencia al emprendedor",
+             "Efectivo + transferencia", "Pagado adelantado"],
+        )
+        transfer = st.number_input("Monto transferido (Gs.)", min_value=0, step=1000)
+        instructions = st.text_area("Instrucciones para el conductor")
+        submit = st.form_submit_button("Enviar pedido", type="primary")
+    if submit:
+        if not customer or not phone or not address:
+            st.warning("Completá nombre, teléfono y dirección.")
+        else:
+            record = {
+                "ID_Pedido": str(uuid.uuid4()),
+                "ID_Emprendedor": current_id(),
+                "Nombre_Cliente": customer,
+                "Telefono_Cliente": phone,
+                "Direccion_Entrega": address,
+                "Ubicacion_Google_Maps": maps,
+                "Descripcion": description,
+                "Prioridad": priority,
+                "Monto_Producto": product_amount,
+                "Costo_Envio": shipping,
+                "Monto_Anticipado": advance,
+                "Metodo_Pago": payment,
+                "Monto_Transferencia_Adicional": transfer,
+                "Instrucciones": instructions,
+                "Estado_Reparto": "Pendiente",
+            }
+            ok, _ = safe_api("entrepreneur_create_order", record=record)
+            if not ok:
+                st.caption("Compatibilidad alternativa: el backend anterior puede requerir la acción save.")
+    st.subheader("Mis pedidos")
+    ok, result = safe_api("entrepreneur_my_orders")
+    if ok:
+        show_table(result, "Todavía no tenés pedidos.")
+
+
+def entrepreneur_levante() -> None:
+    brand_header("Recibir · Solicitar levante")
+    st.caption("El levante corresponde a una compra del emprendedor a su proveedor.")
+    with st.form("entrepreneur_levante_form"):
+        supplier = st.text_input("Nombre del proveedor")
+        supplier_phone = st.text_input("Teléfono del proveedor")
+        origin = st.text_input("Dirección de retiro")
+        origin_maps = st.text_input("Ubicación de retiro (Google Maps)")
+        origin_ref = st.text_input("Referencia del retiro")
+        destination = st.text_input("Dirección de destino (a nombre del emprendedor)")
+        destination_maps = st.text_input("Ubicación de destino (Google Maps)")
+        destination_ref = st.text_input("Referencia del destino")
+        reference_number = st.text_input("Número de referencia")
+        requested_name = st.text_input("Nombre solicitado para retirar")
+        total = st.number_input("Total de la compra (Gs.)", min_value=0, step=1000)
+        priority = st.selectbox("Prioridad", ["Normal", "Urgente"])
+        notes = st.text_area("Observaciones")
+        photo = st.file_uploader("Foto de comprobante (una sola imagen)", type=["jpg", "jpeg", "png"])
+        submit = st.form_submit_button("Enviar solicitud de levante", type="primary")
+    if submit:
+        if not supplier or not origin or not destination or not requested_name:
+            st.warning("Completá proveedor, retiro, destino y nombre solicitado.")
+        else:
+            record = {
+                "ID_Levante": str(uuid.uuid4()),
+                "ID_Emprendedor": current_id(),
+                "Nombre_Proveedor": supplier,
+                "Telefono_Proveedor": supplier_phone,
+                "Direccion_Origen": origin,
+                "Ubicacion_Origen_Google_Maps": origin_maps,
+                "Referencia_Origen": origin_ref,
+                "Direccion_Destino": destination,
+                "Ubicacion_Destino_Google_Maps": destination_maps,
+                "Referencia_Destino": destination_ref,
+                "Numero_Referencia": reference_number,
+                "Nombre_Solicitado": requested_name,
+                "Monto_Total": total,
+                "Prioridad": priority,
+                "Observaciones": notes,
+                "Estado_Levante": "Pendiente",
+                "Costo_Levante": 20000,
+            }
+            if photo:
+                # La carga binaria necesita una acción de backend/Drive específica.
+                st.warning("La foto se seleccionó, pero su almacenamiento requiere la acción de carga de archivos en Apps Script.")
+            safe_api("entrepreneur_create_levante", record=record)
+    st.info("Costo de referencia del trámite: Gs. 20.000. Pago de conductor definido: Gs. 10.000.")
+    st.subheader("Mis solicitudes de RECIBIR")
+    ok, result = safe_api("entrepreneur_my_levantes")
+    if ok:
+        show_table(result, "Todavía no tenés solicitudes de levante.")
+
+
+def entrepreneur_operations() -> None:
+    brand_header("Mis operaciones")
+    a, b = st.tabs(["Pedidos", "Levantes"])
+    with a:
+        ok, result = safe_api("entrepreneur_my_orders")
+        if ok:
+            show_table(result)
+    with b:
+        ok, result = safe_api("entrepreneur_my_levantes")
+        if ok:
+            show_table(result)
+
+
+def render_entrepreneur(page: str) -> None:
+    page = st.session_state.get("entrepreneur_action", page)
+    if page == "Inicio":
+        entrepreneur_home()
+    elif page == "Enviar pedidos":
+        entrepreneur_order()
+    elif page == "Recibir levantes":
+        entrepreneur_levante()
+    elif page == "Mis operaciones":
+        entrepreneur_operations()
+
+
+# ---------------------------------------------------------------------------
+# CONDUCTOR
+# ---------------------------------------------------------------------------
+
+def driver_home() -> None:
+    brand_header("Panel del conductor")
+    ok, shift = safe_api("driver_my_active_shift")
+    if ok:
+        st.subheader("Mi jornada")
+        st.write(shift if shift else "No hay una jornada activa.")
+    ok, works = safe_api("driver_my_works")
+    if ok:
+        show_table(works, "No tenés trabajos activos asignados.")
+
+
+def driver_shift() -> None:
+    brand_header("Mi jornada")
+    ok, shift = safe_api("driver_my_active_shift")
+    if ok:
+        st.write("Jornada actual")
+        st.json(shift if shift else {})
+    st.divider()
+    device = st.text_input("Identificador del dispositivo (opcional)")
+    a, b = st.columns(2)
+    with a:
+        if st.button("▶️ Iniciar turno", type="primary", use_container_width=True):
+            safe_api("driver_start_shift", ID_Dispositivo=device)
+    with b:
+        reason = st.text_input("Motivo de finalización")
+        if st.button("⏹ Finalizar mi turno", use_container_width=True):
+            safe_api("driver_end_shift", motivo=reason)
+
+
+def driver_works() -> None:
+    brand_header("Mis trabajos")
+    ok, result = safe_api("driver_my_works")
+    if ok:
+        show_table(result, "No hay trabajos activos.")
+    st.divider()
+    st.subheader("Actualizar estado de un trabajo")
+    with st.form("driver_work_update"):
+        work_type = st.selectbox("Tipo", ["PEDIDO", "LEVANTE", "TRAMITE"])
+        reference = st.text_input("ID del pedido / levante / trámite")
+        states = (
+            ["En camino", "Entregado"] if work_type == "PEDIDO"
+            else ["En camino", "En proceso", "Completado"]
+        )
+        new_state = st.selectbox("Nuevo estado", states)
+        submit = st.form_submit_button("Actualizar estado", type="primary")
+    if submit:
+        safe_api(
+            "driver_update_work_status",
+            work_type=work_type,
+            reference_id=reference,
+            new_status=new_state,
+        )
+    st.caption(
+        "El conductor no realiza cierres de caja ni liquidaciones. "
+        "Los trabajos pendientes al terminar el turno se coordinan con OPERADOR."
+    )
+
+
+def driver_location() -> None:
+    brand_header("Ubicación")
+    st.info(
+        "La ubicación compartida se usa para coordinar el servicio. "
+        "No se presenta como seguimiento GPS en vivo si el backend no lo implementa."
+    )
+    lat = st.number_input("Latitud", format="%.7f")
+    lon = st.number_input("Longitud", format="%.7f")
+    if st.button("Compartir ubicación"):
+        safe_api("location", record={
+            "ID_Conductor": current_id(),
+            "Latitud": lat,
+            "Longitud": lon,
+            "Fecha_Hora": datetime.now().isoformat(),
+        })
+
+
+def driver_earnings() -> None:
+    brand_header("Mis ganancias")
+    ok, result = safe_api("driver_my_earnings")
+    if ok:
+        if isinstance(result, dict):
+            st.metric("Acumulado de la jornada", money(result.get("total", 0)))
+        show_table(result, "Todavía no hay ganancias acreditadas.")
+    st.markdown('<div id="ganancias-optiruta"></div>', unsafe_allow_html=True)
+
+
+def driver_history() -> None:
+    brand_header("Mi historial")
+    ok, result = safe_api("driver_shift_history")
+    if ok:
+        show_table(result, "No hay jornadas anteriores.")
+
+
+def render_driver(page: str) -> None:
+    if page == "Inicio":
+        driver_home()
+    elif page == "Mi jornada":
+        driver_shift()
+    elif page == "Mis trabajos":
+        driver_works()
+    elif page == "Mis ganancias":
+        driver_earnings()
+    elif page == "Mi historial":
+        driver_history()
+
+
+# ---------------------------------------------------------------------------
+# OPERADOR
+# ---------------------------------------------------------------------------
+
+def operator_home() -> None:
+    brand_header("Panel operativo")
+    ok, result = safe_api("operator_queue")
+    if ok and isinstance(result, dict):
         active = result.get("active", [])
         queue = result.get("queue", [])
-        c1,c2,c3,c4 = st.columns(4)
-        c1.metric("Trabajos en gestión", f"{len(active)}/3")
-        c2.metric("Pedidos disponibles", sum(1 for x in queue if x.get("Tipo_Trabajo")=="PEDIDO"))
-        c3.metric("Levantes disponibles", sum(1 for x in queue if x.get("Tipo_Trabajo")=="LEVANTE"))
-        c4.metric("Comisiones acumuladas", money(int(result.get("commissions", 0) or 0)))
-        st.subheader("Mis trabajos activos")
-        if active:
-            for work in active:
-                with st.container(border=True):
-                    st.markdown(f"**{work.get('Tipo_Trabajo')} · {work.get('ID_Referencia_Trabajo')}**")
-                    st.caption(f"Prioridad: {work.get('Prioridad','Normal')} · Estado: {work.get('Estado')}")
-                    obs = st.text_area("Observación interna", key=f"op_note_{work.get('ID_Trabajo')}", placeholder="Escribí una observación...")
-                    b1,b2 = st.columns(2)
-                    with b1:
-                        if st.button("Guardar observación", key=f"op_obs_{work.get('ID_Trabajo')}", use_container_width=True):
-                            saved=api("operator_observation", work_id=work.get("ID_Trabajo"), text=obs)
-                            if saved: st.success(saved.get("message","Registrado")); st.rerun()
-                    with b2:
-                        if st.button("Marcar coordinado", key=f"op_done_{work.get('ID_Trabajo')}", use_container_width=True):
-                            done=api("operator_complete", work_id=work.get("ID_Trabajo"), notes=obs)
-                            if done: st.success(done.get("message","Coordinación registrada")); st.rerun()
-        else:
-            st.info("Todavía no tenés trabajos activos.")
+        commissions = result.get("commissions", [])
+        metric_row([
+            ("Trabajos activos", len(active)),
+            ("En cola", len(queue)),
+            ("Comisiones", len(commissions)),
+        ])
+        st.subheader("Trabajos activos")
+        show_table(active, "No tenés trabajos activos.")
+        st.subheader("Cola de trabajos")
+        show_table(queue, "No hay trabajos pendientes.")
+    else:
+        st.info("El panel operativo necesita la acción operator_queue del dispatcher.")
 
-        st.subheader("Pedidos y levantes disponibles")
 
+def operator_work_management() -> None:
+    brand_header("Trabajos y asignaciones")
+    ok, result = safe_api("operator_queue")
+    if ok and isinstance(result, dict):
+        st.subheader("Cola de pedidos y levantes")
+        queue = result.get("queue", [])
+        show_table(queue, "No hay trabajos pendientes.")
         if queue:
-            for item in queue:
-                tipo = item.get("Tipo_Trabajo")
-                referencia = item.get("ID_Referencia_Trabajo")
+            st.caption("Tomá un trabajo para comenzar su coordinación.")
+    st.divider()
+    st.subheader("Tomar un trabajo")
+    with st.form("operator_take"):
+        kind = st.selectbox("Tipo de trabajo", ["PEDIDO", "LEVANTE", "TRAMITE"])
+        reference = st.text_input("ID de referencia")
+        submit = st.form_submit_button("Tomar trabajo", type="primary")
+    if submit:
+        safe_api("operator_take", work_type=kind, reference_id=reference)
+    st.divider()
+    st.subheader("Asignar o reasignar conductor")
+    with st.form("operator_assign"):
+        kind2 = st.selectbox("Tipo de trabajo", ["PEDIDO", "LEVANTE", "TRAMITE"], key="assign_kind")
+        reference2 = st.text_input("ID del trabajo", key="assign_ref")
+        driver_id = st.text_input("ID del conductor")
+        submit2 = st.form_submit_button("Asignar conductor")
+    if submit2:
+        safe_api(
+            "operator_assign_work",
+            work_type=kind2,
+            reference_id=reference2,
+            driver_id=driver_id,
+        )
+    st.divider()
+    st.subheader("Observaciones")
+    with st.form("operator_observation"):
+        work_id = st.text_input("ID_Trabajo")
+        observation = st.text_area("Observación")
+        submit3 = st.form_submit_button("Guardar observación")
+    if submit3:
+        safe_api("operator_observation", work_id=work_id, text=observation)
 
-                with st.container(border=True):
 
-                    if tipo == "PEDIDO":
-                        st.markdown(
-                            f"**📦 PEDIDO · {referencia}**"
-                        )
-                        st.markdown(
-                            f"**Cliente:** {item.get('Cliente') or 'Cliente sin nombre'}"
-                        )
-                        st.markdown(
-                            f"**Dirección:** {item.get('Direccion') or 'Sin dirección'}"
-                        )
-                        st.caption(
-                            f"{item.get('Prioridad')} · "
-                            f"{item.get('Descripcion') or 'Sin descripción'} · "
-                            f"Cargado: {item.get('Fecha_Carga') or 's/d'}"
-                        )
-                        texto_boton = "TOMAR PEDIDO"
+def operator_drivers_motos() -> None:
+    brand_header("Conductores y motos")
+    a, b = st.tabs(["Conductores", "Motos"])
+    with a:
+        show_table(df("CONDUCTORES"))
+    with b:
+        show_table(df("MOTOS"))
+    st.divider()
+    st.subheader("Asignar moto a conductor")
+    with st.form("operator_assign_moto"):
+        driver_id = st.text_input("ID_Conductor")
+        moto_id = st.text_input("ID_Moto")
+        notes = st.text_area("Observaciones")
+        submit = st.form_submit_button("Asignar moto", type="primary")
+    if submit:
+        safe_api("operator_assign_moto", ID_Conductor=driver_id, ID_Moto=moto_id, observaciones=notes)
+    st.subheader("Cambiar moto")
+    with st.form("operator_change_moto"):
+        driver2 = st.text_input("ID_Conductor", key="change_driver")
+        moto2 = st.text_input("Nueva ID_Moto")
+        reason = st.text_input("Motivo del cambio")
+        submit2 = st.form_submit_button("Cambiar moto")
+    if submit2:
+        safe_api("operator_change_moto", ID_Conductor=driver2, ID_Moto=moto2, motivo=reason)
+    st.subheader("Recibir devolución")
+    with st.form("operator_return_moto"):
+        driver3 = st.text_input("ID_Conductor", key="return_driver")
+        notes3 = st.text_area("Observaciones de devolución")
+        submit3 = st.form_submit_button("Registrar devolución")
+    if submit3:
+        safe_api("operator_return_moto", ID_Conductor=driver3, observaciones=notes3)
 
-                    elif tipo == "LEVANTE":
-                        st.markdown(
-                            f"**🛍️ LEVANTE · {referencia}**"
-                        )
-                        st.markdown(
-                            f"**Proveedor:** {item.get('Proveedor') or 'Sin proveedor'}"
-                        )
-                        st.markdown(
-                            f"**Teléfono:** {item.get('Telefono') or 'Sin teléfono'}"
-                        )
-                        st.markdown(
-                            f"**📍 Retiro:** {item.get('Direccion_Origen') or 'Sin dirección'}"
-                        )
-                        st.markdown(
-                            f"**🏠 Destino:** {item.get('Direccion_Destino') or 'Sin dirección'}"
-                        )
-                        st.markdown(
-                            f"**A nombre de:** {item.get('Nombre_Solicitado') or 'Sin nombre'}"
-                        )
-                        st.caption(
-                            f"{item.get('Prioridad')} · "
-                            f"{item.get('Descripcion') or 'Sin descripción'} · "
-                            f"Solicitado: {item.get('Fecha_Carga') or 's/d'}"
-                        )
-                        texto_boton = "TOMAR LEVANTE"
 
-                    else:
-                        continue
+def operator_shifts() -> None:
+    brand_header("Jornadas de conductores")
+    ok, result = safe_api("operator_active_shifts")
+    if ok:
+        show_table(result, "No hay jornadas activas.")
+    st.divider()
+    with st.form("operator_end_shift"):
+        driver = st.text_input("ID_Conductor")
+        reason = st.text_area("Motivo de finalización del turno")
+        submit = st.form_submit_button("Finalizar turno del conductor", type="primary")
+    if submit:
+        safe_api("operator_end_driver_shift", ID_Conductor=driver, motivo=reason)
+    st.caption("Finalizar turno no cierra caja ni autoriza liquidaciones.")
 
-                    if st.button(
-                        texto_boton,
-                        key=f"op_take_{tipo}_{referencia}",
-                        disabled=len(active) >= 3,
-                        use_container_width=True
-                    ):
-                        taken = api(
-                            "operator_take",
-                            work_type=tipo,
-                            reference_id=referencia
-                        )
 
-                        if taken:
-                            st.success(
-                                taken.get("message", "Trabajo tomado")
-                            )
-                            st.rerun()
+def operator_incidents() -> None:
+    brand_header("Incidencias y coordinación")
+    with st.form("operator_incident"):
+        work_type = st.selectbox("Tipo", ["PEDIDO", "LEVANTE", "TRAMITE", "JORNADA", "MOTO"])
+        reference = st.text_input("ID de referencia")
+        category = st.selectbox(
+            "Tipo de incidencia",
+            ["Demora", "Proveedor cerrado", "Cliente ausente", "Problema con moto", "Otra"],
+        )
+        detail = st.text_area("Detalle")
+        submit = st.form_submit_button("Registrar incidencia")
+    if submit:
+        safe_api(
+            "operator_incident_create",
+            tipo=work_type,
+            referencia=reference,
+            categoria=category,
+            detalle=detail,
+        )
 
-        else:
-            st.info("No hay pedidos ni levantes disponibles en este momento.")
-    if st.button("Actualizar lista", use_container_width=True): st.rerun()
 
-else:
-    st.error("Rol no reconocido. Contactá al administrador.")
+def operator_history() -> None:
+    brand_header("Historial operativo")
+    ok, result = safe_api("history_operational_list")
+    if ok:
+        show_table(result, "No hay historial operativo disponible.")
+
+
+def render_operator(page: str) -> None:
+    if page == "Inicio":
+        operator_home()
+    elif page in ("Panel operativo", "Trabajos y asignaciones"):
+        operator_work_management()
+    elif page == "Conductores y motos":
+        operator_drivers_motos()
+    elif page == "Jornadas":
+        operator_shifts()
+    elif page == "Incidencias":
+        operator_incidents()
+    elif page == "Historial operativo":
+        operator_history()
+
+
+# ---------------------------------------------------------------------------
+# APLICACIÓN PRINCIPAL
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    if not st.session_state.get("logged_in"):
+        login_screen()
+        return
+
+    role = current_role()
+    if role not in ROLE_LABELS:
+        st.error("Rol no reconocido. Contactá al administrador.")
+        if st.button("Volver al inicio de sesión"):
+            do_logout()
+        return
+
+    page = sidebar(role)
+    if role == "ADMIN":
+        render_admin(page)
+    elif role == "EMPRENDEDOR":
+        render_entrepreneur(page)
+    elif role == "CONDUCTOR":
+        render_driver(page)
+    elif role == "OPERADOR":
+        render_operator(page)
+
+    common_notifications()
+    floating_access()
+    st.caption(
+        f"OptiRuta Delivery · {datetime.now().strftime('%d/%m/%Y %H:%M')} · "
+        "Los permisos definitivos se validan en Apps Script."
+    )
+
+
+if __name__ == "__main__":
+    main()
